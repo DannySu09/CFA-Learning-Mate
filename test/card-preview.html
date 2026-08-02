@@ -1,0 +1,297 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Card preview — CFA Practical Problem</title>
+<style>
+  body { margin: 0; font-family: -apple-system, sans-serif; background: #e2e8f0; }
+  .frame { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; padding: 28px; }
+  .pane { flex: 0 1 720px; }
+  .pane h1 { font: 600 12px -apple-system, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #64748b; text-align: center; }
+  .sheet { background: #fff; border-radius: 14px; box-shadow: 0 4px 24px rgb(15 23 42 / .12); overflow: hidden; }
+  .sheet.dark { background: #0f172a; }
+</style>
+<style>
+/* CFA Practical Problem card UI (auto-generated) */
+/* Quiet Editorial: centered readable column, typographic hierarchy,
+   hairline rules, soft semantic tints (green = correct, red = your miss). */
+.card {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  color: #1e293b;
+  background: #ffffff;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 22px 26px;
+}
+/* Masthead label with a hairline running to the right edge */
+.card .q-kicker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 16px;
+}
+.card .q-kicker::after { content: ""; flex: 1; border-top: 1px solid #e2e8f0; }
+/* Question stem on the front; on the back it echoes muted so the
+   explanation leads the eye. */
+.q-stem { font-size: 18px; font-weight: 600; color: #0f172a; }
+.card.back .q-stem-echo {
+  font-size: 15px;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.6;
+}
+/* Shared scenario/exhibit block attached to vignette questions */
+.vignette {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 12px 14px;
+  font-size: 15px;
+  margin: 10px 0 14px;
+}
+.vignette h2 { font-size: 16px; margin: 6px 0; }
+.vignette table { border-collapse: collapse; margin: 8px auto; }
+.vignette th, .vignette td { border: 1px solid #cbd5e1; padding: 5px 8px; }
+.vignette th { background: #f1f5f9; }
+
+/* Options: quiet bordered rows — outlined letter chip, text, state tag */
+.options { margin: 16px 0 4px; }
+.opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 9px 14px;
+  margin: 8px 0;
+}
+.opt-letter {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.opt-text { flex: 1; min-width: 0; }
+/* State tags are baked into the field HTML; only the back shows them */
+.card.front .opt-tag { display: none; }
+.opt-tag {
+  flex: none;
+  margin-left: auto;
+  padding-left: 14px;
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Reveal styles are scoped to the back card — the front stays neutral. */
+.card.back .opt-correct { border-color: #86efac; background: #f0fdf4; }
+.card.back .opt-correct .opt-letter { border-color: #16a34a; background: #16a34a; color: #fff; }
+.card.back .opt-correct .opt-tag { color: #15803d; }
+.card.back .opt-wrong { border-color: #fca5a5; background: #fef2f2; }
+.card.back .opt-wrong .opt-letter { border-color: #dc2626; background: #dc2626; color: #fff; }
+.card.back .opt-wrong .opt-tag { color: #b91c1c; }
+
+/* Verdict — one soft green panel anchors the answer; your miss is a slim
+   note beneath (its full state already shows on the option row above) */
+.verdict {
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 15px;
+  margin-top: 12px;
+}
+.verdict-correct { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-weight: 600; }
+.verdict-note { margin-top: 6px; padding-left: 2px; font-size: 13.5px; font-weight: 500; color: #b91c1c; }
+
+/* Section labels — small caps with a hairline running to the right */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin: 26px 0 12px;
+}
+.section-title::after { content: ""; flex: 1; border-top: 1px solid #e5e7eb; }
+.section-body p { margin: 8px 0; }
+/* The takeaway — the one true callout on the card */
+.big-idea {
+  background: #eef2ff;
+  border: 1px solid #e0e7ff;
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: #1e293b;
+  font-weight: 600;
+  margin: 4px 0 12px;
+}
+.big-idea::before {
+  content: "Takeaway";
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #6366f1;
+  margin-bottom: 3px;
+}
+.why-wrong-title { font-size: 13px; font-weight: 700; color: #475569; margin: 16px 0 6px; }
+ul.why-wrong { margin: 0 0 12px; padding-left: 0; list-style: none; }
+ul.why-wrong li { position: relative; padding-left: 24px; margin: 6px 0; }
+ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
+.memory-hook {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 12px 0 4px;
+  color: #334155;
+  font-style: italic;
+}
+.memory-hook::before {
+  content: "Memory hook";
+  display: block;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 3px;
+}
+/* Terms — flat rows with an em-dash, story in light italic below */
+.term { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+.term:last-child { border-bottom: none; }
+.term-name { font-weight: 700; color: #0f172a; }
+.term-name::after { content: " —"; color: #94a3b8; font-weight: 400; }
+.term-def { color: #334155; }
+.term-story {
+  margin-top: 5px;
+  font-size: 14px;
+  font-style: italic;
+  color: #64748b;
+}
+/* Official CFAI feedback — per-option blocks, correct ✓ / wrong ✗ */
+.official-tip {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0;
+  padding: 9px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.official-letter { flex: none; font-weight: 700; font-size: 13px; margin-top: 1px; }
+.official-correct { border-color: #bbf7d0; background: #f0fdf4; }
+.official-correct .official-letter { color: #15803d; }
+.official-wrong { border-color: #fecaca; background: #fef2f2; }
+.official-wrong .official-letter { color: #b91c1c; }
+.official-body { flex: 1; min-width: 0; }
+.official-body p { margin: 6px 0; }
+.official-body table { border-collapse: collapse; margin: 8px 0; }
+.official-body th, .official-body td { border: 1px solid #cbd5e1; padding: 4px 8px; }
+.official-body th { background: #f1f5f9; }
+.source {
+  margin-top: 26px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 11px;
+  color: #94a3b8;
+  word-break: break-all;
+}
+/* Fallback for installs whose user-customized templates still use the
+   legacy solid banners */
+.answer-banner { color: #15803d; font-weight: 600; margin-top: 12px; }
+.picked-banner { color: #b91c1c; font-weight: 600; }
+/* Night mode — Anki adds the nightMode class to its own card wrapper, an
+   ancestor of our root div, so match both placements. */
+.card.nightMode, .nightMode .card { background: #0f172a; color: #e2e8f0; }
+.nightMode .q-kicker { color: #64748b; }
+.nightMode .q-kicker::after { border-color: #1e293b; }
+.nightMode .q-stem { color: #f1f5f9; }
+.nightMode .card.back .q-stem-echo { color: #94a3b8; }
+.nightMode .vignette { border-color: #334155; background: #1e293b; }
+.nightMode .vignette th { background: #334155; }
+.nightMode .vignette th, .nightMode .vignette td { border-color: #475569; }
+.nightMode .opt { border-color: #334155; background: transparent; }
+.nightMode .opt-letter { border-color: #475569; background: transparent; color: #cbd5e1; }
+.nightMode .card.back .opt-correct { border-color: #166534; background: #052e16; }
+.nightMode .card.back .opt-correct .opt-letter { border-color: #16a34a; background: #16a34a; }
+.nightMode .card.back .opt-correct .opt-tag { color: #4ade80; }
+.nightMode .card.back .opt-wrong { border-color: #7f1d1d; background: #2a0a0a; }
+.nightMode .card.back .opt-wrong .opt-letter { border-color: #dc2626; background: #dc2626; }
+.nightMode .card.back .opt-wrong .opt-tag { color: #f87171; }
+.nightMode .verdict-correct { background: #052e16; border-color: #166534; color: #4ade80; }
+.nightMode .verdict-note { color: #f87171; }
+.nightMode .section-title { color: #64748b; }
+.nightMode .section-title::after { border-color: #1e293b; }
+.nightMode .big-idea { background: #1e1b4b; border-color: #3730a3; color: #e0e7ff; }
+.nightMode .big-idea::before { color: #a5b4fc; }
+.nightMode .why-wrong-title { color: #94a3b8; }
+.nightMode ul.why-wrong li strong { color: #f87171; }
+.nightMode .memory-hook { background: #1e293b; border-color: #334155; color: #cbd5e1; }
+.nightMode .memory-hook::before { color: #94a3b8; }
+.nightMode .term { border-color: #1e293b; }
+.nightMode .term-name { color: #f1f5f9; }
+.nightMode .term-name::after { color: #475569; }
+.nightMode .term-def { color: #cbd5e1; }
+.nightMode .term-story { color: #94a3b8; }
+.nightMode .official-tip { border-color: #1e293b; }
+.nightMode .official-correct { border-color: #166534; background: #052e16; }
+.nightMode .official-correct .official-letter { color: #4ade80; }
+.nightMode .official-wrong { border-color: #7f1d1d; background: #2a0a0a; }
+.nightMode .official-wrong .official-letter { color: #f87171; }
+.nightMode .official-body th { background: #334155; }
+.nightMode .official-body th, .nightMode .official-body td { border-color: #475569; }
+.nightMode .answer-banner { color: #4ade80; }
+.nightMode .picked-banner { color: #f87171; }
+.nightMode .source { border-color: #1e293b; color: #475569; }
+</style>
+</head><body>
+<div class="frame">
+  <div class="pane"><h1>Front — light</h1><div class="sheet">
+<div class="card cfa front">
+  <div class="q-kicker">CFA Practical Problem</div>
+  <div class="q-stem"><div class="vignette"><h2>Exhibit 1: Bond Characteristics</h2><table><tr><th>Bond</th><th>Coupon</th><th>Maturity</th><th>Yield</th></tr><tr><td>A</td><td>10%</td><td>5 yrs</td><td>6%</td></tr><tr><td>B</td><td>0%</td><td>5 yrs</td><td>6%</td></tr><tr><td>C</td><td>5%</td><td>2 yrs</td><td>6%</td></tr></table></div><p>An analyst is evaluating the price sensitivity of the three bonds in Exhibit 1 to a parallel shift in the yield curve. The bond with the <strong>highest duration</strong> is most likely:</p></div>
+  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span><span class="opt-tag">✓ correct</span></div><div class="opt opt-wrong"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span><span class="opt-tag">✗ your pick</span></div></div>
+</div></div></div>
+  <div class="pane"><h1>Back — light</h1><div class="sheet">
+<div class="card cfa back">
+  <div class="q-stem q-stem-echo"><div class="vignette"><h2>Exhibit 1: Bond Characteristics</h2><table><tr><th>Bond</th><th>Coupon</th><th>Maturity</th><th>Yield</th></tr><tr><td>A</td><td>10%</td><td>5 yrs</td><td>6%</td></tr><tr><td>B</td><td>0%</td><td>5 yrs</td><td>6%</td></tr><tr><td>C</td><td>5%</td><td>2 yrs</td><td>6%</td></tr></table></div><p>An analyst is evaluating the price sensitivity of the three bonds in Exhibit 1 to a parallel shift in the yield curve. The bond with the <strong>highest duration</strong> is most likely:</p></div>
+  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span><span class="opt-tag">✓ correct</span></div><div class="opt opt-wrong"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span><span class="opt-tag">✗ your pick</span></div></div>
+  <div class="verdict verdict-correct">✓ B. Bond B, the zero-coupon bond with five years to maturity</div>
+  <div class="verdict-note">✗ You chose C. Bond C, the 5% coupon bond with two years to maturity</div>
+  <div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips"><div class="official-tip official-correct"><span class="official-letter">✓ B</span><div class="official-body"><p>Correct. The zero-coupon bond has the highest duration because its entire cash flow occurs at maturity, maximizing the weighted average time to receipt.</p></div></div><div class="official-tip official-wrong"><span class="official-letter">✗ C</span><div class="official-body"><p>Incorrect. Although Bond C has a lower coupon than Bond A, its two-year maturity significantly reduces its duration relative to the five-year zero.</p></div></div></div></div>
+  <div class="section"><div class="section-title">Why this answer</div><div class="section-body"><div class="big-idea">Duration is the weighted average time to receive a bond's cash flows — the later and smaller the interim coupons, the higher the duration.</div><p>All three bonds yield 6%, so duration is driven by coupon size and maturity. Bond B pays nothing until maturity, so every cash flow is weighted at five years.</p><div class="why-wrong-title">Why the others are wrong</div><ul class="why-wrong"><li><strong>A.</strong> The 10% coupon pulls cash flows earlier, lowering duration below the zero-coupon bond.</li><li><strong>C.</strong> A low coupon raises duration, but the two-year maturity caps it well below the five-year zero.</li></ul><div class="memory-hook">Zero coupon = zero brakes. With nothing paid early, duration runs all the way to maturity.</div></div></div>
+  <div class="section"><div class="section-title">Key terms</div><div class="section-body terms"><div class="term"><span class="term-name">Macaulay Duration</span> <span class="term-def">The weighted average time until a bond's cash flows are received, expressed in years.</span><div class="term-story">Picture a see-saw: duration is the fulcrum point where all the coupon "weights" balance.</div></div><div class="term"><span class="term-name">Modified Duration</span> <span class="term-def">Macaulay duration divided by (1 + yield), giving direct price sensitivity per 1% yield change.</span></div></div></div>
+  <div class="source">https://learn.cfainstitute.org/…/fixed-income#q-4821</div>
+</div></div></div>
+  <div class="pane"><h1>Back — night</h1><div class="sheet dark"><div class="nightMode">
+<div class="card cfa back">
+  <div class="q-stem q-stem-echo"><div class="vignette"><h2>Exhibit 1: Bond Characteristics</h2><table><tr><th>Bond</th><th>Coupon</th><th>Maturity</th><th>Yield</th></tr><tr><td>A</td><td>10%</td><td>5 yrs</td><td>6%</td></tr><tr><td>B</td><td>0%</td><td>5 yrs</td><td>6%</td></tr><tr><td>C</td><td>5%</td><td>2 yrs</td><td>6%</td></tr></table></div><p>An analyst is evaluating the price sensitivity of the three bonds in Exhibit 1 to a parallel shift in the yield curve. The bond with the <strong>highest duration</strong> is most likely:</p></div>
+  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span><span class="opt-tag">✓ correct</span></div><div class="opt opt-wrong"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span><span class="opt-tag">✗ your pick</span></div></div>
+  <div class="verdict verdict-correct">✓ B. Bond B, the zero-coupon bond with five years to maturity</div>
+  <div class="verdict-note">✗ You chose C. Bond C, the 5% coupon bond with two years to maturity</div>
+  <div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips"><div class="official-tip official-correct"><span class="official-letter">✓ B</span><div class="official-body"><p>Correct. The zero-coupon bond has the highest duration because its entire cash flow occurs at maturity, maximizing the weighted average time to receipt.</p></div></div><div class="official-tip official-wrong"><span class="official-letter">✗ C</span><div class="official-body"><p>Incorrect. Although Bond C has a lower coupon than Bond A, its two-year maturity significantly reduces its duration relative to the five-year zero.</p></div></div></div></div>
+  <div class="section"><div class="section-title">Why this answer</div><div class="section-body"><div class="big-idea">Duration is the weighted average time to receive a bond's cash flows — the later and smaller the interim coupons, the higher the duration.</div><p>All three bonds yield 6%, so duration is driven by coupon size and maturity. Bond B pays nothing until maturity, so every cash flow is weighted at five years.</p><div class="why-wrong-title">Why the others are wrong</div><ul class="why-wrong"><li><strong>A.</strong> The 10% coupon pulls cash flows earlier, lowering duration below the zero-coupon bond.</li><li><strong>C.</strong> A low coupon raises duration, but the two-year maturity caps it well below the five-year zero.</li></ul><div class="memory-hook">Zero coupon = zero brakes. With nothing paid early, duration runs all the way to maturity.</div></div></div>
+  <div class="section"><div class="section-title">Key terms</div><div class="section-body terms"><div class="term"><span class="term-name">Macaulay Duration</span> <span class="term-def">The weighted average time until a bond's cash flows are received, expressed in years.</span><div class="term-story">Picture a see-saw: duration is the fulcrum point where all the coupon "weights" balance.</div></div><div class="term"><span class="term-name">Modified Duration</span> <span class="term-def">Macaulay duration divided by (1 + yield), giving direct price sensitivity per 1% yield change.</span></div></div></div>
+  <div class="source">https://learn.cfainstitute.org/…/fixed-income#q-4821</div>
+</div></div></div></div>
+</div>
+</body></html>
