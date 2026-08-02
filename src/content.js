@@ -195,6 +195,23 @@
     return '';
   }
 
+  // Official per-option feedback: each option region carries a second
+  // .user_content div whose label span reads "Correct Answer Feedback:"
+  // (correct option) or "Incorrect Answer Feedback:" (each wrong option).
+  // Unanswered questions have no feedback blocks at all. Returns sanitized
+  // HTML (for the card) + plain text (for the LLM prompt), or empty strings.
+  function optionTip(region) {
+    if (!region) return { tip: '', tipText: '' };
+    const isFeedbackLabel = s => /^(Correct|Incorrect) Answer Feedback:\s*$/i.test(s || '');
+    const el = [...region.querySelectorAll('.user_content')]
+      .find(node => [...node.querySelectorAll('span')].some(span => isFeedbackLabel(span.textContent)));
+    if (!el) return { tip: '', tipText: '' };
+    const clone = el.cloneNode(true);
+    const label = [...clone.querySelectorAll('span')].find(span => isFeedbackLabel(span.textContent));
+    label?.remove();
+    return { tip: sanitizeHtml(clone.innerHTML), tipText: richText(clone) };
+  }
+
   function extractOptions(qEl, qid) {
     const inputs = qEl.querySelectorAll(`input[name="interaction_${qid}"]`);
     return [...inputs].map((input, i) => {
@@ -210,11 +227,14 @@
       }
       const m = text.match(/^([A-Za-z])\./);
       const letter = m ? m[1].toUpperCase() : String.fromCharCode(65 + i);
+      const tip = optionTip(region);
       return {
         letter,
         text,
         isCorrect: !!region?.querySelector('svg[name="IconCheck"]'),
         isPicked: input.checked,
+        tip: tip.tip,
+        tipText: tip.tipText,
         _region: region // internal, stripped before sending
       };
     });

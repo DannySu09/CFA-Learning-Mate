@@ -19,13 +19,15 @@ back of each card.
 3. **Extract** — on click, the question stem, options, the correct answer
    (`svg[name="IconCheck"]`) and your pick (`svg[name="IconX"]` + checked) are
    read from the DOM. Shared vignette scenarios (intro text + exhibit tables)
-   preceding the question are included so each card is self-contained.
+   preceding the question are included so each card is self-contained. The
+   page's official per-option feedback (`Correct Answer Feedback:` /
+   `Incorrect Answer Feedback:`) is captured as well.
 4. **Generate** — the background service worker sends the question (plus any
-   vignette) alone to an OpenAI-compatible LLM (**Chat Completions** or
-   **Responses** API) which returns a JSON study note: answer letter, a
-   structured storytelling explanation (big idea, short paragraphs, wrong-
-   option reasons, memory hook), and storytelling-style CFA `terms` with
-   definitions.
+   vignette), and the page's official feedback as a reference, to an
+   OpenAI-compatible LLM (**Chat Completions** or **Responses** API) which
+   returns a JSON study note: answer letter, a structured storytelling
+   explanation (big idea, short paragraphs, wrong-option reasons, memory
+   hook), and storytelling-style CFA `terms` with definitions.
 5. **Add to Anki** — Anki-Connect creates the note in the configured deck.
    Saving **always replaces** an existing card (checked by tag
    `cfa-qid-<id>`), and the note is re-queried afterwards to verify it
@@ -34,9 +36,10 @@ back of each card.
 
 ### Card layout
 - **Front:** question stem + options (no answer revealed).
-- **Back:** correct-answer banner, options with green correct / red "you chose"
-  highlights, **📖 Why this answer** (storytelling explanation), **📚 Key CFA
-  Terms** glossary cards, and a small source footer.
+- **Back:** correct-answer verdict, options with green correct / red "you
+  chose" highlights, **Official Tips** (the page's official feedback shown
+  verbatim — ✓ correct / ✗ wrong options), **Why this answer** (storytelling
+  explanation), **Key terms** glossary rows, and a small source footer.
 
 ## Setup
 
@@ -74,8 +77,9 @@ back of each card.
 
 ## Notes & limitations
 
-- The LLM gets **only the question and options** — the page's official
-  feedback text is never sent and never shown on the card.
+- The page's official per-option feedback is captured and shown **verbatim**
+  in the **Official Tips** section of the card; it is also sent to the LLM as
+  a reference so the generated explanation aligns with the official rationale.
 - Math formulas rendered by MathJax degrade to plain text on the card.
 - The API key is stored in `chrome.storage.local`; requests go directly from
   the extension to your chosen endpoint.

@@ -113,6 +113,15 @@ function buildUserPrompt(p) {
   } else {
     lines.push('The learner has not answered yet — solve the question yourself.');
   }
+  const tips = (p.options || []).filter(o => o.tipText);
+  if (tips.length) {
+    lines.push('');
+    lines.push('Official feedback from the page (verbatim, for reference — align');
+    lines.push('your explanation with it when consistent, but write in your own words):');
+    for (const o of tips) {
+      lines.push(`- ${o.letter} (${o.isCorrect ? 'Correct' : 'Incorrect'}): ${o.tipText}`);
+    }
+  }
   return lines.join('\n');
 }
 
