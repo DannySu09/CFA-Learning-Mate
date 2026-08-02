@@ -7,6 +7,10 @@ back of each card.
 
 ## How it works
 
+The CFA Institute practice page — the source UI the extension operates on:
+
+![CFA Institute practice UI](assets/cfa-practice-ui.png)
+
 1. **Detect** — on `https://learn.cfainstitute.org/courses/*/external_tools/*`
    the content script watches the (SPA) page and finds question blocks:
    `div[data-quiz-question-id="…"]`.
@@ -36,10 +40,15 @@ back of each card.
 
 ### Card layout
 - **Front:** question stem + options (no answer revealed).
+
+  ![Anki card front](assets/anki-card-front.png)
+
 - **Back:** correct-answer verdict, options with green correct / red "you
   chose" highlights, **Official Tips** (the page's official feedback shown
   verbatim — ✓ correct / ✗ wrong options), **Why this answer** (storytelling
   explanation), **Key terms** glossary rows, and a small source footer.
+
+  ![Anki card back](assets/anki-card-back.png)
 
 ## Setup
 
