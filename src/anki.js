@@ -115,6 +115,28 @@ export async function deleteNoteById(noteId, ankiUrl) {
   return ankiInvoke('deleteNotes', { notes: [noteId] }, ankiUrl);
 }
 
+/** Stored field HTML of a note (name → value), as Anki has it on disk. */
+export async function getNoteFields(noteId, ankiUrl) {
+  const infos = await ankiInvoke('notesInfo', { notes: [noteId] }, ankiUrl);
+  const fields = {};
+  for (const [name, v] of Object.entries(infos?.[0]?.fields || {})) {
+    fields[name] = v?.value ?? '';
+  }
+  return fields;
+}
+
+/** Read-only: does the note type (if it exists) have the OfficialTips field?
+ *  Used by the "AI Explain" preview path, which must not create anything in
+ *  Anki (unlike ensureDeckAndModel). */
+export async function modelHasOfficialTips(ankiUrl) {
+  try {
+    const fields = await ankiInvoke('modelFieldNames', { modelName: NOTE_TYPE_NAME }, ankiUrl);
+    return fields.includes('OfficialTips');
+  } catch {
+    return true; // model absent or Anki down — preview with the current layout
+  }
+}
+
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -189,7 +211,10 @@ function buildExplanationHtml(llm) {
   return llm.explanationHtml || '';
 }
 
-export async function addQuestionNote({ settings, payload, llm, hasOfficialTips }) {
+// The note's stored fields for a question + LLM note. Shared by
+// addQuestionNote (save) and the "AI Explain" preview, so both build the
+// exact same card.
+export function buildNoteFields({ payload, llm, hasOfficialTips }) {
   const correct = payload.options.find(o => o.isCorrect);
   const picked = payload.options.find(o => o.isPicked);
   const officialTipsHtml = buildOfficialTipsHtml(payload.options);
@@ -214,7 +239,11 @@ export async function addQuestionNote({ settings, payload, llm, hasOfficialTips 
     // in a separate section.
     fields.Explanation += `<div class="section-title">Official Tips</div>${officialTipsHtml}`;
   }
+  return fields;
+}
 
+export async function addQuestionNote({ settings, payload, llm, hasOfficialTips }) {
+  const fields = buildNoteFields({ payload, llm, hasOfficialTips });
   return ankiInvoke('addNote', {
     note: {
       deckName: settings.deckName,
@@ -260,6 +289,28 @@ function backTemplate(hasOfficialTips) {
   {{#Terms}}<div class="section"><div class="section-title">Key terms</div><div class="section-body terms">{{Terms}}</div></div>{{/Terms}}
   <div class="source">{{Source}}</div>
 </div>`;
+}
+
+// Anki's template language is a small Mustache subset — {{Field}} inserts a
+// field's HTML, {{#Field}}…{{/Field}} renders its content when the field is
+// non-empty. That's all the note type templates use, so this mini-renderer
+// produces the same HTML Anki would. Sections never nest, but the recursion
+// would handle it if they did.
+function renderTemplate(tpl, fields) {
+  tpl = tpl.replace(/\{\{#([A-Za-z0-9_]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
+    (m, name, inner) => (fields[name] || '').trim() ? renderTemplate(inner, fields) : '');
+  return tpl.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (m, name) => fields[name] || '');
+}
+
+// Render a card face exactly as Anki will: the shipped template + card CSS
+// against a note's stored fields. Missing fields (e.g. OfficialTips on note
+// types created before that field existed) render empty, matching Anki.
+export function renderCardFrontHtml(fields) {
+  return { cardFrontHtml: renderTemplate(TEMPLATE_FRONT, fields), cardCss: NOTE_CSS };
+}
+
+export function renderCardBackHtml(fields) {
+  return { cardBackHtml: renderTemplate(backTemplate(true), fields), cardCss: NOTE_CSS };
 }
 
 // Legacy auto-generated templates (pre-marker) kept verbatim so installs

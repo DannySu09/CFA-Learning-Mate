@@ -14,29 +14,35 @@ The CFA Institute practice page — the source UI the extension operates on:
 1. **Detect** — on `https://learn.cfainstitute.org/courses/*/external_tools/*`
    the content script watches the (SPA) page and finds question blocks:
    `div[data-quiz-question-id="…"]`.
-2. **Button** — every question gets an injected **📥 Save to Anki** button.
-   Questions you answered incorrectly are tinted red. The "added" status is
-   **queried from Anki itself** (batched `findNotes` on the `cfa-qid-<id>`
-   tags) — the extension keeps no local saved-state, so it always reflects
-   reality (delete a card in Anki and the pill disappears). Added questions
-   show **✓ Added to Anki** with a **↻ Re-add to Anki** button.
+2. **Button** — every question gets an injected **📥 Save to Anki** button
+   (an outline button in Anki's dark gray) plus a quieter **✨ AI Explain**
+   button on the right edge. The "added" status is **queried from Anki
+   itself** (batched `findNotes` on the `cfa-qid-<id>` tags) — the extension
+   keeps no local saved-state, so it always reflects reality (delete a card
+   in Anki and the pill disappears). Added questions show **✓ Added to
+   Anki** with a **↻ Re-add to Anki** button.
 3. **Extract** — on click, the question stem, options, the correct answer
    (`svg[name="IconCheck"]`) and your pick (`svg[name="IconX"]` + checked) are
    read from the DOM. Shared vignette scenarios (intro text + exhibit tables)
    preceding the question are included so each card is self-contained. The
    page's official per-option feedback (`Correct Answer Feedback:` /
    `Incorrect Answer Feedback:`) is captured as well.
-4. **Generate** — the background service worker sends the question (plus any
-   vignette), and the page's official feedback as a reference, to an
-   OpenAI-compatible LLM (**Chat Completions** or **Responses** API) which
+4. **Generate / AI Explain** — **✨ AI Explain** sends the question (plus any
+   vignette) and the page's official feedback as a reference to an
+   OpenAI-compatible LLM (**Chat Completions** or **Responses** API), which
    returns a JSON study note: answer letter, a structured storytelling
    explanation (big idea, short paragraphs, wrong-option reasons, memory
-   hook), and storytelling-style CFA `terms` with definitions.
+   hook), and storytelling-style CFA `terms` with definitions. It previews
+   the card back under the button **without touching Anki**, so you can
+   review the explanation first; the generated note is cached per question.
 5. **Add to Anki** — Anki-Connect creates the note in the configured deck.
    Saving **always replaces** an existing card (checked by tag
    `cfa-qid-<id>`), and the note is re-queried afterwards to verify it
-   landed before the UI flips to "added". Uses the `CFA Practical Problem`
-   note type whose card templates render the styled UI.
+   landed before the UI flips to "added". If **AI Explain** ran first, its
+   note is **reused** — no second LLM request. Uses the `CFA Practical
+   Problem` note type whose card templates render the styled UI. After a
+   successful add, the card's **front and back are rendered right below the
+   button** on the practice page — exactly what the card looks like in Anki.
 
 ### Card layout
 - **Front:** question stem + options (no answer revealed).

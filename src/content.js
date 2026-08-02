@@ -17,6 +17,7 @@
   const RADIO_SELECTOR = 'input[name^="interaction_"]';
   const BUTTON_SAVE = '📥 Save to Anki';
   const BUTTON_RE_ADD = '↻ Re-add to Anki';
+  const BUTTON_AI = '✨ AI Explain';
   const STATUS_ADDED = '✓ Added to Anki';
 
   // Question id: from the attribute (review mode) or derived from the radio
@@ -36,19 +37,28 @@
   // shadow roots do not inherit document styles.
   const STYLE_TEXT = `
 .cfa2anki-wrap { margin: 14px 0 6px; text-align: left; }
+/* Outline button in Anki's dark gray — no state colors; "done" just mutes
+   to the lighter gray. */
 .cfa2anki-btn {
   font: 600 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  color: #fff; background: #2563eb; border: 1px solid #2563eb;
+  color: #333; background: #fff; border: 1px solid #333;
   border-radius: 8px; padding: 9px 14px; cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0,0,0,.15); transition: opacity .15s, filter .15s;
+  transition: background .15s;
 }
-.cfa2anki-btn:hover:not(:disabled) { filter: brightness(1.08); }
-.cfa2anki-btn.missed { background: #dc2626; border-color: #dc2626; }
-.cfa2anki-btn.done {
-  background: #fff; color: #475569; border-color: #cbd5e1;
-}
-.cfa2anki-btn.done:hover:not(:disabled) { filter: none; background: #f1f5f9; }
+.cfa2anki-btn:hover:not(:disabled) { background: #f1f5f9; }
+.cfa2anki-btn.done { color: #64748b; border-color: #cbd5e1; }
+.cfa2anki-btn.done:hover:not(:disabled) { background: #f1f5f9; }
 .cfa2anki-btn:disabled { opacity: .55; }
+/* Secondary action: less outstanding, pushed to the right edge of the row. */
+.cfa2anki-btn-ai {
+  margin-left: auto;
+  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #475569; background: #fff; border: 1px solid #cbd5e1;
+  border-radius: 8px; padding: 8px 12px; cursor: pointer;
+  transition: background .15s;
+}
+.cfa2anki-btn-ai:hover:not(:disabled) { background: #f1f5f9; }
+.cfa2anki-btn-ai:disabled { opacity: .55; }
 .cfa2anki-status {
   display: inline-block;
   font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -58,7 +68,17 @@
 /* The pill's own display rule would otherwise override the hidden attribute
    (author styles beat the UA's [hidden] { display:none }) — restore it. */
 .cfa2anki-status[hidden] { display: none; }
-.cfa2anki-wrap { white-space: nowrap; }
+/* Button row: status pill + save button on the left, AI Explain pushed to
+   the right edge. */
+.cfa2anki-wrap { display: flex; align-items: center; gap: 8px; }
+/* Card-face previews: the rendered Anki card, framed like a sheet of paper.
+   Their content lives in a closed shadow root, so page styles can't restyle
+   them (and the page can't see them). */
+.cfa2anki-preview, .cfa2anki-preview-front {
+  display: block; margin: 12px 0 4px;
+  border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden;
+  background: #fff; box-shadow: 0 2px 12px rgba(15, 23, 42, .08);
+}
 .cfa2anki-toast {
   position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
   background: #111827; color: #fff; font: 500 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -98,6 +118,14 @@
   // "Added" status is NOT stored locally — it is a cache of the last
   // Anki status query (qid → noteId), refreshed on mutations and after adds.
   const ankiState = new Map();
+
+  // Preview state per question: the LLM study note (so "Save to Anki" reuses
+  // it instead of re-requesting) and the rendered card faces (back once
+  // "AI Explain" ran, front once the card is saved). Kept so SPA re-renders
+  // can restore previews without another LLM/Anki round trip.
+  const previewCache = new Map(); // qid → { llm, front: {html,css}|null, back: {html,css}|null }
+  // host element → its closed shadow root (the only reference that survives).
+  const previewRoots = new WeakMap();
 
   // Reloading the extension (chrome://extensions) while a quiz tab stays open
   // severs the old content script's Chrome API bindings: its buttons keep
@@ -289,7 +317,7 @@
     const wrap = document.createElement(qEl.tagName === 'SPAN' ? 'span' : 'div');
     wrap.className = `${TAG}-wrap`;
     if (qEl.tagName === 'SPAN') {
-      wrap.style.display = 'block';
+      wrap.style.display = 'flex';
       wrap.style.gridColumn = '1 / -1';
     }
     const status = document.createElement('span');
@@ -300,8 +328,43 @@
     btn.type = 'button';
     btn.className = `${TAG}-btn`;
     btn.addEventListener('click', () => onClick(btn, qEl));
-    wrap.append(status, btn);
+    const btnAi = document.createElement('button');
+    btnAi.type = 'button';
+    btnAi.className = `${TAG}-btn-ai`;
+    btnAi.textContent = BUTTON_AI;
+    btnAi.addEventListener('click', () => onExplain(btnAi, qEl));
+    wrap.append(status, btn, btnAi);
     qEl.appendChild(wrap);
+  }
+
+  // Show a card face right under the button. HTML/CSS are rendered by the
+  // background from the note type's own templates (single source of truth)
+  // and live in a closed shadow root — page styles can't restyle the card,
+  // and the page's framework can't touch it. The front sits above the back,
+  // like flipping the card.
+  function renderPreview(qEl, role, html, css) {
+    const wrap = qEl.querySelector(`.${TAG}-wrap`);
+    if (!wrap) return;
+    const cls = `${TAG}-preview${role === 'front' ? '-front' : ''}`;
+    let host = qEl.querySelector(`.${cls}`);
+    if (!host) {
+      host = document.createElement(qEl.tagName === 'SPAN' ? 'span' : 'div');
+      host.className = cls;
+      if (qEl.tagName === 'SPAN') {
+        host.style.display = 'block';
+        host.style.gridColumn = '1 / -1';
+      }
+      const other = qEl.querySelector(role === 'front' ? `.${TAG}-preview` : `.${TAG}-preview-front`);
+      if (other) other.insertAdjacentElement(role === 'front' ? 'beforebegin' : 'afterend', host);
+      else wrap.insertAdjacentElement('afterend', host);
+    }
+    host.dataset.qid = getQid(qEl);
+    let root = previewRoots.get(host);
+    if (!root) {
+      root = host.attachShadow({ mode: 'closed' });
+      previewRoots.set(host, root);
+    }
+    root.innerHTML = `<style>${css}</style>${html}`;
   }
 
   function refreshButtons() {
@@ -311,14 +374,27 @@
       // spinner/adding state while the request is in flight.
       if (!btn || btn.dataset.busy === '1') return;
       const qid = getQid(qEl);
-      const status = getStatus(extractOptions(qEl, qid));
       const saved = ankiState.has(qid);
       const statusEl = qEl.querySelector(`.${TAG}-status`);
       if (statusEl) statusEl.hidden = !saved;
-      btn.classList.toggle('missed', !saved && status === 'failed');
       btn.classList.toggle('done', saved);
       btn.textContent = saved ? BUTTON_RE_ADD : BUTTON_SAVE;
       btn.disabled = false;
+      // Card-face previews belong to a question: when the SPA swaps the
+      // container to a new question, drop stale previews; if the same
+      // question re-rendered without them (or re-parsed the container's
+      // HTML, which recreates the host without its shadow root), restore
+      // them from the cache.
+      for (const role of ['back', 'front']) {
+        const cls = role === 'front' ? `${TAG}-preview-front` : `${TAG}-preview`;
+        const host = qEl.querySelector(`.${cls}`);
+        const intact = host && host.dataset.qid === qid && previewRoots.has(host);
+        if (host && !intact) host.remove();
+        if (!intact) {
+          const cached = previewCache.get(qid)?.[role];
+          if (cached) renderPreview(qEl, role, cached.html, cached.css);
+        }
+      }
     });
   }
 
@@ -372,11 +448,15 @@
       return;
     }
     const payload = extractQuestion(qEl);
+    // Reuse the note generated by "AI Explain" instead of requesting a fresh
+    // one from the LLM.
+    const llm = previewCache.get(payload.qid)?.llm;
+    if (llm) payload.llm = llm;
     const wrap = btn.closest(`.${TAG}-wrap`);
     // Adding state: spinner + disabled until Anki confirms the note exists.
     btn.dataset.busy = '1';
     btn.disabled = true;
-    btn.classList.remove('missed', 'done');
+    btn.classList.remove('done');
     btn.innerHTML = `<span class="${TAG}-spinner"></span>Adding to Anki…`;
     try {
       const res = await chrome.runtime.sendMessage({ type: 'SAVE_QUESTION', payload });
@@ -385,6 +465,19 @@
         delete btn.dataset.busy;
         refreshButtons();
         showPopover(wrap, res.replaced ? 'Card re-added to Anki ✓' : 'Card added to Anki ✓');
+        // The card is saved: show the front under the button, and keep the
+        // back (reusing the "AI Explain" content, re-rendered from Anki's
+        // stored copy so it always matches what was actually stored).
+        if (res.cardFrontHtml && res.cardCss) {
+          const prev = previewCache.get(payload.qid) || {};
+          previewCache.set(payload.qid, {
+            llm: prev.llm || llm || null,
+            front: { html: res.cardFrontHtml, css: res.cardCss },
+            back: res.cardBackHtml ? { html: res.cardBackHtml, css: res.cardCss } : prev.back || null
+          });
+          renderPreview(qEl, 'front', res.cardFrontHtml, res.cardCss);
+          if (res.cardBackHtml) renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss);
+        }
       } else {
         delete btn.dataset.busy;
         refreshButtons();
@@ -396,6 +489,42 @@
       refreshButtons();
       scheduleStatusRefresh();
       toast(`Could not add card: ${err.message}`, true);
+    }
+  }
+
+  // "AI Explain": generate the explanation (LLM) and preview the card back —
+  // nothing is written to Anki. The generated note is cached so "Save to
+  // Anki" can reuse it.
+  async function onExplain(btnAi, qEl) {
+    if (!runtimeAvailable()) {
+      toast(CONTEXT_LOST_MSG, true);
+      return;
+    }
+    const payload = extractQuestion(qEl);
+    const wrap = btnAi.closest(`.${TAG}-wrap`);
+    btnAi.dataset.busy = '1';
+    btnAi.disabled = true;
+    btnAi.innerHTML = `<span class="${TAG}-spinner"></span>Explaining…`;
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'EXPLAIN_QUESTION', payload });
+      if (res?.ok && res.cardBackHtml && res.cardCss) {
+        const prev = previewCache.get(payload.qid) || {};
+        previewCache.set(payload.qid, {
+          ...prev,
+          llm: res.llm,
+          back: { html: res.cardBackHtml, css: res.cardCss }
+        });
+        renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss);
+        showPopover(wrap, 'Explanation ready — click Save to Anki to add the card');
+      } else {
+        toast(`Could not generate explanation: ${res?.error || 'the request failed — try again'}`, true);
+      }
+    } catch (err) {
+      toast(`Could not generate explanation: ${err.message}`, true);
+    } finally {
+      delete btnAi.dataset.busy;
+      btnAi.disabled = false;
+      btnAi.textContent = BUTTON_AI;
     }
   }
 

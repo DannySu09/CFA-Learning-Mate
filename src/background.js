@@ -9,7 +9,12 @@ import {
   findNoteIdByQid,
   findNoteIdsByQids,
   deleteNoteById,
-  addQuestionNote
+  addQuestionNote,
+  getNoteFields,
+  renderCardFrontHtml,
+  renderCardBackHtml,
+  buildNoteFields,
+  modelHasOfficialTips
 } from './anki.js';
 
 const DEFAULT_SETTINGS = {
@@ -49,10 +54,9 @@ async function ensureApiHostPermission(apiBaseUrl) {
   return chrome.permissions.contains({ origins: [origin + '/*'] });
 }
 
-// Anki is the only source of truth for whether a card exists: saving always
-// replaces an existing card — the extension keeps no local saved-state.
-async function handleSave(payload) {
-  const settings = await getSettings();
+// Both the save and the preview ("AI Explain") path need the LLM; fail fast
+// with a message that points at the options page.
+async function validateLlmSettings(settings) {
   if (!settings.apiBaseUrl || !settings.model) {
     throw new Error('LLM settings are missing — open the extension options page.');
   }
@@ -62,8 +66,19 @@ async function handleSave(payload) {
   if (!(await ensureApiHostPermission(settings.apiBaseUrl))) {
     throw new Error('Host permission for the API is missing — open the extension options page and click "Test LLM" to grant it.');
   }
+}
 
-  const existing = await findNoteIdByQid(payload.qid, settings.ankiUrl);
+// Anki is the only source of truth for whether a card exists: saving always
+// replaces an existing card — the extension keeps no local saved-state.
+async function handleSave(payload) {
+  const settings = await getSettings();
+  await validateLlmSettings(settings);
+
+  // "AI Explain" may have already generated the note — reuse it instead of
+  // paying for a second LLM request.
+  const { llm: precomputed, ...question } = payload;
+
+  const existing = await findNoteIdByQid(question.qid, settings.ankiUrl);
   let replaced = false;
   if (existing) {
     try {
@@ -74,16 +89,40 @@ async function handleSave(payload) {
     }
   }
 
-  const llm = await generateExplanation(payload, settings);
+  const llm = precomputed ?? await generateExplanation(question, settings);
   const { hasOfficialTips } = await ensureDeckAndModel(settings);
-  const noteId = await addQuestionNote({ settings, payload, llm, hasOfficialTips });
+  const noteId = await addQuestionNote({ settings, payload: question, llm, hasOfficialTips });
   // Verify the note actually landed in Anki before reporting success —
   // the button only flips to "added" when this re-query confirms it.
-  const confirmed = await findNoteIdByQid(payload.qid, settings.ankiUrl);
+  const confirmed = await findNoteIdByQid(question.qid, settings.ankiUrl);
   if (!confirmed) {
     throw new Error('The card was submitted but Anki did not confirm it — check the deck manually.');
   }
-  return { ok: true, verified: true, replaced, noteId };
+  // Render both card faces (templates + CSS against Anki's stored fields) so
+  // the content script can show them under the button: the front for the new
+  // card, the back reusing the generated explanation. The preview is a
+  // nicety — if it fails, the card is still safely in Anki.
+  let preview = {};
+  try {
+    const fields = await getNoteFields(confirmed, settings.ankiUrl);
+    preview = { ...renderCardFrontHtml(fields), ...renderCardBackHtml(fields) };
+  } catch { /* preview skipped */ }
+  return { ok: true, verified: true, replaced, noteId: confirmed, ...preview };
+}
+
+// "AI Explain": generate the explanation and preview the card back WITHOUT
+// touching Anki (no deck/model creation, no note). The content script keeps
+// the returned note and reuses it when "Save to Anki" is clicked.
+async function handleExplain(payload) {
+  const settings = await getSettings();
+  await validateLlmSettings(settings);
+  const llm = await generateExplanation(payload, settings);
+  const preview = renderCardBackHtml(buildNoteFields({
+    payload,
+    llm,
+    hasOfficialTips: await modelHasOfficialTips(settings.ankiUrl)
+  }));
+  return { ok: true, llm, ...preview };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -92,6 +131,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(sendResponse)
       .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
     return true; // async response
+
+  } else if (msg?.type === 'EXPLAIN_QUESTION') {
+    handleExplain(msg.payload)
+      .then(sendResponse)
+      .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
 
   } else if (msg?.type === 'CHECK_STATUS') {
     (async () => {
