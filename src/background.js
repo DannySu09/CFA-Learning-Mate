@@ -75,8 +75,8 @@ async function handleSave(payload) {
   }
 
   const llm = await generateExplanation(payload, settings);
-  await ensureDeckAndModel(settings);
-  const noteId = await addQuestionNote({ settings, payload, llm });
+  const { hasOfficialTips } = await ensureDeckAndModel(settings);
+  const noteId = await addQuestionNote({ settings, payload, llm, hasOfficialTips });
   // Verify the note actually landed in Anki before reporting success —
   // the button only flips to "added" when this re-query confirms it.
   const confirmed = await findNoteIdByQid(payload.qid, settings.ankiUrl);
@@ -103,8 +103,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
 
   } else if (msg?.type === 'TEST_ANKI') {
-    ankiTest(msg.ankiUrl)
-      .then(() => sendResponse({ ok: true }))
+    (async () => {
+      await ankiTest(msg.ankiUrl);
+      // Keep the deck + note type in sync too: clicking "Test Anki" applies
+      // field/template/CSS upgrades without having to save a card.
+      const settings = await getSettings();
+      await ensureDeckAndModel({
+        deckName: msg.deckName || settings.deckName,
+        ankiUrl: msg.ankiUrl || settings.ankiUrl
+      });
+      return { ok: true };
+    })()
+      .then(sendResponse)
       .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
     return true;
 

@@ -66,10 +66,11 @@ document.getElementById('test-anki').addEventListener('click', async () => {
   setStatus('Testing Anki-Connect…');
   const res = await chrome.runtime.sendMessage({
     type: 'TEST_ANKI',
-    ankiUrl: document.getElementById('ankiUrl').value.trim()
+    ankiUrl: document.getElementById('ankiUrl').value.trim(),
+    deckName: document.getElementById('deckName').value.trim()
   });
   setStatus(res.ok
-    ? 'Anki-Connect OK ✓'
+    ? 'Anki-Connect OK ✓ (note type up to date)'
     : `Anki-Connect error: ${res.error}\n\nIs Anki running with the AnkiConnect add-on installed?`,
     res.ok);
 });

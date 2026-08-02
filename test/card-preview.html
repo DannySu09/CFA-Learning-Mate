@@ -105,6 +105,19 @@
 .card.back .opt-wrong { border-color: #fca5a5; background: #fef2f2; }
 .card.back .opt-wrong .opt-letter { border-color: #dc2626; background: #dc2626; color: #fff; }
 .card.back .opt-wrong .opt-tag { color: #b91c1c; }
+/* State tag for the current field format (no tag spans in the stored HTML) */
+.card.back .opt::after {
+  flex: none;
+  margin-left: auto;
+  padding-left: 14px;
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.card.back .opt-correct::after { content: "✓ correct"; color: #15803d; }
+.card.back .opt-correct.opt-picked::after { content: "✓ your pick"; }
+.card.back .opt-wrong::after { content: "✗ your pick"; color: #b91c1c; }
 
 /* Verdict — one soft green panel anchors the answer; your miss is a slim
    note beneath (its full state already shows on the option row above) */
@@ -234,9 +247,11 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .nightMode .card.back .opt-correct { border-color: #166534; background: #052e16; }
 .nightMode .card.back .opt-correct .opt-letter { border-color: #16a34a; background: #16a34a; }
 .nightMode .card.back .opt-correct .opt-tag { color: #4ade80; }
+.nightMode .card.back .opt-correct::after { color: #4ade80; }
 .nightMode .card.back .opt-wrong { border-color: #7f1d1d; background: #2a0a0a; }
 .nightMode .card.back .opt-wrong .opt-letter { border-color: #dc2626; background: #dc2626; }
 .nightMode .card.back .opt-wrong .opt-tag { color: #f87171; }
+.nightMode .card.back .opt-wrong::after { color: #f87171; }
 .nightMode .verdict-correct { background: #052e16; border-color: #166534; color: #4ade80; }
 .nightMode .verdict-note { color: #f87171; }
 .nightMode .section-title { color: #64748b; }
@@ -269,12 +284,12 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 <div class="card cfa front">
   <div class="q-kicker">CFA Practical Problem</div>
   <div class="q-stem"><div class="vignette"><h2>Exhibit 1: Bond Characteristics</h2><table><tr><th>Bond</th><th>Coupon</th><th>Maturity</th><th>Yield</th></tr><tr><td>A</td><td>10%</td><td>5 yrs</td><td>6%</td></tr><tr><td>B</td><td>0%</td><td>5 yrs</td><td>6%</td></tr><tr><td>C</td><td>5%</td><td>2 yrs</td><td>6%</td></tr></table></div><p>An analyst is evaluating the price sensitivity of the three bonds in Exhibit 1 to a parallel shift in the yield curve. The bond with the <strong>highest duration</strong> is most likely:</p></div>
-  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span><span class="opt-tag">✓ correct</span></div><div class="opt opt-wrong"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span><span class="opt-tag">✗ your pick</span></div></div>
+  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span></div><div class="opt opt-wrong opt-picked"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span></div></div>
 </div></div></div>
   <div class="pane"><h1>Back — light</h1><div class="sheet">
 <div class="card cfa back">
   <div class="q-stem q-stem-echo"><div class="vignette"><h2>Exhibit 1: Bond Characteristics</h2><table><tr><th>Bond</th><th>Coupon</th><th>Maturity</th><th>Yield</th></tr><tr><td>A</td><td>10%</td><td>5 yrs</td><td>6%</td></tr><tr><td>B</td><td>0%</td><td>5 yrs</td><td>6%</td></tr><tr><td>C</td><td>5%</td><td>2 yrs</td><td>6%</td></tr></table></div><p>An analyst is evaluating the price sensitivity of the three bonds in Exhibit 1 to a parallel shift in the yield curve. The bond with the <strong>highest duration</strong> is most likely:</p></div>
-  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span><span class="opt-tag">✓ correct</span></div><div class="opt opt-wrong"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span><span class="opt-tag">✗ your pick</span></div></div>
+  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span></div><div class="opt opt-wrong opt-picked"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span></div></div>
   <div class="verdict verdict-correct">✓ B. Bond B, the zero-coupon bond with five years to maturity</div>
   <div class="verdict-note">✗ You chose C. Bond C, the 5% coupon bond with two years to maturity</div>
   <div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips"><div class="official-tip official-correct"><span class="official-letter">✓ B</span><div class="official-body"><p>Correct. The zero-coupon bond has the highest duration because its entire cash flow occurs at maturity, maximizing the weighted average time to receipt.</p></div></div><div class="official-tip official-wrong"><span class="official-letter">✗ C</span><div class="official-body"><p>Incorrect. Although Bond C has a lower coupon than Bond A, its two-year maturity significantly reduces its duration relative to the five-year zero.</p></div></div></div></div>
@@ -285,7 +300,7 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
   <div class="pane"><h1>Back — night</h1><div class="sheet dark"><div class="nightMode">
 <div class="card cfa back">
   <div class="q-stem q-stem-echo"><div class="vignette"><h2>Exhibit 1: Bond Characteristics</h2><table><tr><th>Bond</th><th>Coupon</th><th>Maturity</th><th>Yield</th></tr><tr><td>A</td><td>10%</td><td>5 yrs</td><td>6%</td></tr><tr><td>B</td><td>0%</td><td>5 yrs</td><td>6%</td></tr><tr><td>C</td><td>5%</td><td>2 yrs</td><td>6%</td></tr></table></div><p>An analyst is evaluating the price sensitivity of the three bonds in Exhibit 1 to a parallel shift in the yield curve. The bond with the <strong>highest duration</strong> is most likely:</p></div>
-  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span><span class="opt-tag">✓ correct</span></div><div class="opt opt-wrong"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span><span class="opt-tag">✗ your pick</span></div></div>
+  <div class="options"><div class="opt"><span class="opt-letter">A</span><span class="opt-text">Bond A, the 10% annual coupon bond with five years to maturity</span></div><div class="opt opt-correct"><span class="opt-letter">B</span><span class="opt-text">Bond B, the zero-coupon bond with five years to maturity</span></div><div class="opt opt-wrong opt-picked"><span class="opt-letter">C</span><span class="opt-text">Bond C, the 5% coupon bond with two years to maturity</span></div></div>
   <div class="verdict verdict-correct">✓ B. Bond B, the zero-coupon bond with five years to maturity</div>
   <div class="verdict-note">✗ You chose C. Bond C, the 5% coupon bond with two years to maturity</div>
   <div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips"><div class="official-tip official-correct"><span class="official-letter">✓ B</span><div class="official-body"><p>Correct. The zero-coupon bond has the highest duration because its entire cash flow occurs at maturity, maximizing the weighted average time to receipt.</p></div></div><div class="official-tip official-wrong"><span class="official-letter">✗ C</span><div class="official-body"><p>Incorrect. Although Bond C has a lower coupon than Bond A, its two-year maturity significantly reduces its duration relative to the five-year zero.</p></div></div></div></div>

@@ -44,49 +44,51 @@ export async function ensureDeckAndModel({ deckName, ankiUrl }) {
       inOrderFields: NOTE_FIELDS,
       css: NOTE_CSS,
       isCloze: false,
-      cardTemplates: [{ Name: 'CFA Question', Front: TEMPLATE_FRONT, Back: TEMPLATE_BACK }]
+      cardTemplates: [{ Name: 'CFA Question', Front: TEMPLATE_FRONT, Back: backTemplate(true) }]
     }, ankiUrl);
-  } else {
-    // Upgrade our own generated model fields/templates when they changed;
-    // skip anything the user customized inside Anki (recognized by a missing
-    // auto-generation marker, or a template that no longer matches what we
-    // ship). Older AnkiConnect versions may not support these actions.
-    try {
-      const fields = await ankiInvoke('modelFieldNames', { modelName: NOTE_TYPE_NAME }, ankiUrl);
-      if (!NOTE_FIELDS.every(f => fields.includes(f))) {
-        // Append-only: existing notes keep their values (fields match by
-        // name, so ordinals of current fields are unchanged).
-        await ankiInvoke('updateModelFields', {
-          modelName: NOTE_TYPE_NAME,
-          fields: NOTE_FIELDS.map(name => ({ name }))
-        }, ankiUrl);
-      }
-    } catch { /* unsupported action on older AnkiConnect — keep going */ }
-    try {
-      const { css } = await ankiInvoke('modelStyling', { modelName: NOTE_TYPE_NAME }, ankiUrl);
-      if (css && css.includes(NOTE_CSS_MARKER) && css.trim() !== NOTE_CSS.trim()) {
-        await ankiInvoke('updateModelStyling', {
-          model: { name: NOTE_TYPE_NAME, css: NOTE_CSS }
-        }, ankiUrl);
-      }
-    } catch { /* unsupported action on older AnkiConnect — keep going */ }
-    try {
-      const templates = await ankiInvoke('modelTemplates', { modelName: NOTE_TYPE_NAME }, ankiUrl);
-      const t = templates?.['CFA Question'];
-      const ours = (f, b) =>
-        (f.includes(TEMPLATE_MARKER) && b.includes(TEMPLATE_MARKER)) ||
-        (f === LEGACY_TEMPLATE_FRONT && b === LEGACY_TEMPLATE_BACK);
-      if (t && ours(t.Front || '', t.Back || '') &&
-          (t.Front !== TEMPLATE_FRONT || t.Back !== TEMPLATE_BACK)) {
-        await ankiInvoke('updateModelTemplates', {
-          model: {
-            name: NOTE_TYPE_NAME,
-            templates: { 'CFA Question': { Front: TEMPLATE_FRONT, Back: TEMPLATE_BACK } }
-          }
-        }, ankiUrl);
-      }
-    } catch { /* unsupported action on older AnkiConnect — keep going */ }
+    return { hasOfficialTips: true };
   }
+
+  // AnkiConnect cannot add fields to an existing note type (no
+  // updateModelFields action), so the OfficialTips field only exists on
+  // installs created by this version or later — detect it so addNote can
+  // fall back to embedding the tips in the Explanation field.
+  let hasOfficialTips = false;
+  try {
+    const fields = await ankiInvoke('modelFieldNames', { modelName: NOTE_TYPE_NAME }, ankiUrl);
+    hasOfficialTips = fields.includes('OfficialTips');
+  } catch { /* unsupported action on older AnkiConnect — keep going */ }
+
+  // Upgrade our own generated CSS/templates when they changed; skip anything
+  // the user customized inside Anki (recognized by a missing auto-generation
+  // marker, or a template that no longer matches what we ship). Older
+  // AnkiConnect versions may not support these actions.
+  try {
+    const { css } = await ankiInvoke('modelStyling', { modelName: NOTE_TYPE_NAME }, ankiUrl);
+    const ours = css && (css.includes(NOTE_CSS_MARKER) || css.includes(LEGACY_CSS_FINGERPRINT));
+    if (ours && css.trim() !== NOTE_CSS.trim()) {
+      await ankiInvoke('updateModelStyling', {
+        model: { name: NOTE_TYPE_NAME, css: NOTE_CSS }
+      }, ankiUrl);
+    }
+  } catch { /* unsupported action on older AnkiConnect — keep going */ }
+  try {
+    const templates = await ankiInvoke('modelTemplates', { modelName: NOTE_TYPE_NAME }, ankiUrl);
+    const t = templates?.['CFA Question'];
+    const ours = (f, b) =>
+      (f.includes(TEMPLATE_MARKER) && b.includes(TEMPLATE_MARKER)) ||
+      (f === LEGACY_TEMPLATE_FRONT && b === LEGACY_TEMPLATE_BACK);
+    if (t && ours(t.Front || '', t.Back || '') &&
+        (t.Front !== TEMPLATE_FRONT || t.Back !== backTemplate(hasOfficialTips))) {
+      await ankiInvoke('updateModelTemplates', {
+        model: {
+          name: NOTE_TYPE_NAME,
+          templates: { 'CFA Question': { Front: TEMPLATE_FRONT, Back: backTemplate(hasOfficialTips) } }
+        }
+      }, ankiUrl);
+    }
+  } catch { /* unsupported action on older AnkiConnect — keep going */ }
+  return { hasOfficialTips };
 }
 
 export async function findNoteIdByQid(qid, ankiUrl) {
@@ -121,27 +123,21 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-// Semantic option markup: letter chip + text + state tag. Reveal styles are
-// scoped to .card.back — the front stays neutral (and the tags are hidden).
+// Semantic option markup: letter chip + text. Answer state is conveyed by
+// classes on the row only — the ✓/✗ state tags are drawn by back-scoped CSS
+// (::after), so the stored field and the front card never reveal the answer.
 function buildOptionsHtml(options) {
   return (options || []).map(o => {
     const cls = ['opt'];
-    let tag = '';
-    if (o.isCorrect) {
-      cls.push('opt-correct');
-      tag = o.isPicked
-        ? '<span class="opt-tag">✓ your pick</span>'
-        : '<span class="opt-tag">✓ correct</span>';
-    } else if (o.isPicked) {
-      cls.push('opt-wrong');
-      tag = '<span class="opt-tag">✗ your pick</span>';
-    }
+    if (o.isCorrect) cls.push('opt-correct');
+    if (o.isPicked && !o.isCorrect) cls.push('opt-wrong');
+    if (o.isPicked) cls.push('opt-picked');
     // The raw text carries its leading letter ("A. …"); the chip renders it,
     // so strip the prefix from the text itself.
     const text = escapeHtml(o.text.replace(/^[A-Za-z]\.\s*/, ''));
     return `<div class="${cls.join(' ')}">` +
       `<span class="opt-letter">${escapeHtml(o.letter)}</span>` +
-      `<span class="opt-text">${text}</span>${tag}</div>`;
+      `<span class="opt-text">${text}</span></div>`;
   }).join('');
 }
 
@@ -193,9 +189,10 @@ function buildExplanationHtml(llm) {
   return llm.explanationHtml || '';
 }
 
-export async function addQuestionNote({ settings, payload, llm }) {
+export async function addQuestionNote({ settings, payload, llm, hasOfficialTips }) {
   const correct = payload.options.find(o => o.isCorrect);
   const picked = payload.options.find(o => o.isPicked);
+  const officialTipsHtml = buildOfficialTipsHtml(payload.options);
 
   const fields = {
     Question: payload.stemHtml,
@@ -206,9 +203,17 @@ export async function addQuestionNote({ settings, payload, llm }) {
     UserPicked: picked && !picked.isCorrect ? escapeHtml(picked.text) : '',
     Explanation: buildExplanationHtml(llm),
     Terms: buildTermsHtml(llm.terms),
-    OfficialTips: buildOfficialTipsHtml(payload.options),
     Source: `${payload.pageUrl}#q-${payload.qid}`
   };
+  if (hasOfficialTips) {
+    fields.OfficialTips = officialTipsHtml;
+  } else if (officialTipsHtml) {
+    // AnkiConnect cannot add fields to an existing note type, so installs
+    // created before OfficialTips existed render the tips inside the
+    // explanation section (with the same section-title styling) instead of
+    // in a separate section.
+    fields.Explanation += `<div class="section-title">Official Tips</div>${officialTipsHtml}`;
+  }
 
   return ankiInvoke('addNote', {
     note: {
@@ -235,17 +240,27 @@ const TEMPLATE_FRONT = `${TEMPLATE_MARKER}
   <div class="options">{{Options}}</div>
 </div>`;
 
-const TEMPLATE_BACK = `${TEMPLATE_MARKER}
+// Back template. The Official Tips section can only be rendered when the
+// note type has the OfficialTips field: Anki rejects templates that
+// reference missing fields, and AnkiConnect cannot add fields to an
+// existing note type — so installs created before that field existed get a
+// variant without the section (addQuestionNote embeds the tips in the
+// Explanation field instead).
+function backTemplate(hasOfficialTips) {
+  const tipsSection = hasOfficialTips
+    ? '\n  {{#OfficialTips}}<div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips">{{OfficialTips}}</div></div>{{/OfficialTips}}'
+    : '';
+  return `${TEMPLATE_MARKER}
 <div class="card cfa back">
   <div class="q-stem q-stem-echo">{{Question}}</div>
   <div class="options">{{Options}}</div>
   {{#CorrectAnswer}}<div class="verdict verdict-correct">✓ {{CorrectAnswer}}</div>{{/CorrectAnswer}}
-  {{#UserPicked}}<div class="verdict-note">✗ You chose {{UserPicked}}</div>{{/UserPicked}}
-  {{#OfficialTips}}<div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips">{{OfficialTips}}</div></div>{{/OfficialTips}}
+  {{#UserPicked}}<div class="verdict-note">✗ You chose {{UserPicked}}</div>{{/UserPicked}}${tipsSection}
   {{#Explanation}}<div class="section"><div class="section-title">Why this answer</div><div class="section-body">{{Explanation}}</div></div>{{/Explanation}}
   {{#Terms}}<div class="section"><div class="section-title">Key terms</div><div class="section-body terms">{{Terms}}</div></div>{{/Terms}}
   <div class="source">{{Source}}</div>
 </div>`;
+}
 
 // Legacy auto-generated templates (pre-marker) kept verbatim so installs
 // created by older versions of the extension can still be upgraded in place.
@@ -268,6 +283,11 @@ const LEGACY_TEMPLATE_BACK = `<div class="card cfa back">
 // Marker so the extension can detect and upgrade its own generated CSS
 // without ever clobbering styling the user has customized in Anki.
 const NOTE_CSS_MARKER = '/* CFA Practical Problem card UI (auto-generated) */';
+
+// Fingerprint of the very first generated stylesheet (pre-marker installs:
+// solid green/red answer banners, inset-highlighted correct option). CSS
+// carrying it is still ours, so it gets upgraded like marker-bearing CSS.
+const LEGACY_CSS_FINGERPRINT = 'inset 3px 0 0 #22c55e';
 
 const NOTE_CSS = `
 /* CFA Practical Problem card UI (auto-generated) */
@@ -348,7 +368,10 @@ const NOTE_CSS = `
   justify-content: center;
 }
 .opt-text { flex: 1; min-width: 0; }
-/* State tags are baked into the field HTML; only the back shows them */
+/* Answer state lives in classes on the row; the ✓/✗ state tag is drawn by
+   back-scoped CSS so the front card never shows it. The .opt-tag rules below
+   remain only for notes saved by older versions whose Options field still
+   contains tag spans. */
 .card.front .opt-tag { display: none; }
 .opt-tag {
   flex: none;
@@ -366,6 +389,19 @@ const NOTE_CSS = `
 .card.back .opt-wrong { border-color: #fca5a5; background: #fef2f2; }
 .card.back .opt-wrong .opt-letter { border-color: #dc2626; background: #dc2626; color: #fff; }
 .card.back .opt-wrong .opt-tag { color: #b91c1c; }
+/* State tag for the current field format (no tag spans in the stored HTML) */
+.card.back .opt::after {
+  flex: none;
+  margin-left: auto;
+  padding-left: 14px;
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.card.back .opt-correct::after { content: "✓ correct"; color: #15803d; }
+.card.back .opt-correct.opt-picked::after { content: "✓ your pick"; }
+.card.back .opt-wrong::after { content: "✗ your pick"; color: #b91c1c; }
 
 /* Verdict — one soft green panel anchors the answer; your miss is a slim
    note beneath (its full state already shows on the option row above) */
@@ -495,9 +531,11 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .nightMode .card.back .opt-correct { border-color: #166534; background: #052e16; }
 .nightMode .card.back .opt-correct .opt-letter { border-color: #16a34a; background: #16a34a; }
 .nightMode .card.back .opt-correct .opt-tag { color: #4ade80; }
+.nightMode .card.back .opt-correct::after { color: #4ade80; }
 .nightMode .card.back .opt-wrong { border-color: #7f1d1d; background: #2a0a0a; }
 .nightMode .card.back .opt-wrong .opt-letter { border-color: #dc2626; background: #dc2626; }
 .nightMode .card.back .opt-wrong .opt-tag { color: #f87171; }
+.nightMode .card.back .opt-wrong::after { color: #f87171; }
 .nightMode .verdict-correct { background: #052e16; border-color: #166534; color: #4ade80; }
 .nightMode .verdict-note { color: #f87171; }
 .nightMode .section-title { color: #64748b; }

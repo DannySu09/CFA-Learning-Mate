@@ -64,6 +64,8 @@ back of each card.
    - Anki-Connect URL (default `http://127.0.0.1:8765`)
    - Target deck (default `CFA::Practical Problems`, created automatically)
    - Use the **Test Anki** / **Test LLM** buttons to verify both connections.
+     Test Anki also creates the deck and keeps the note type's templates/CSS
+     up to date without saving a card.
 5. Open a practical problem page → click **📥 Save to Anki** on any question.
 
 ## Development
@@ -93,3 +95,8 @@ back of each card.
   the extension to your chosen endpoint.
 - The note type is created once, only if missing — templates you customize
   inside Anki are never overwritten.
+- AnkiConnect cannot add fields to an existing note type. On installs created
+  before the `OfficialTips` field existed, official tips are embedded at the
+  end of the **Why this answer** section instead; add the `OfficialTips` field
+  manually in Anki's note-type editor (Browse → note type → Fields) to get the
+  separate **Official Tips** section.
