@@ -75,6 +75,14 @@ back of each card.
 - If CFAI changes its markup, the selectors live in `src/content.js`
   (`extractOptions`, `.user_content`, `.fs-mask`, `svg[name="IconCheck"]`…).
 
+## Troubleshooting
+
+- **Save to Anki reports "Extension connection lost"** (or the console shows
+  `Cannot read properties of undefined (reading 'sendMessage')`) — the
+  extension was reloaded or updated at `chrome://extensions` while the quiz
+  page was already open, which severs the injected script's Chrome API
+  bindings. Simply **refresh the quiz page** to re-inject the content script.
+
 ## Notes & limitations
 
 - The page's official per-option feedback is captured and shown **verbatim**

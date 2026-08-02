@@ -99,6 +99,16 @@
   // Anki status query (qid → noteId), refreshed on mutations and after adds.
   const ankiState = new Map();
 
+  // Reloading the extension (chrome://extensions) while a quiz tab stays open
+  // severs the old content script's Chrome API bindings: its buttons keep
+  // working, but chrome.runtime goes undefined. Detect that state so we can
+  // tell the user to refresh the page instead of failing with a TypeError.
+  const CONTEXT_LOST_MSG =
+    'Extension connection lost — it was probably reloaded. Refresh this page to continue.';
+  function runtimeAvailable() {
+    return Boolean(chrome?.runtime?.id);
+  }
+
   /* ---------------- extraction ---------------- */
 
   // Keep only tags that render well inside an Anki card; drop scripts,
@@ -341,6 +351,7 @@
   }
 
   async function refreshAnkiStatus() {
+    if (!runtimeAvailable()) return; // extension reloaded — nothing to ask
     const qids = [...new Set(collectQuestions().map(q => getQid(q)).filter(Boolean))];
     if (!qids.length) return;
     try {
@@ -356,6 +367,10 @@
   }
 
   async function onClick(btn, qEl) {
+    if (!runtimeAvailable()) {
+      toast(CONTEXT_LOST_MSG, true);
+      return;
+    }
     const payload = extractQuestion(qEl);
     const wrap = btn.closest(`.${TAG}-wrap`);
     // Adding state: spinner + disabled until Anki confirms the note exists.
@@ -637,6 +652,16 @@
     // Safety net: catches swaps that slip past the observers (e.g. stylesheet-
     // driven visibility changes). Polls cheaply every second.
     setInterval(scan, 1000);
+    // Dev-loop friendliness: reloading the extension severs this script's
+    // chrome.runtime while the tab stays open. On the next focus, say so once
+    // instead of letting the first click fail with a cryptic error.
+    let contextLostNotified = false;
+    window.addEventListener('focus', () => {
+      if (!runtimeAvailable() && !contextLostNotified) {
+        contextLostNotified = true;
+        toast(CONTEXT_LOST_MSG, true);
+      }
+    });
   }
 
   init();
