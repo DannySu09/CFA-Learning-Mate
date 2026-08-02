@@ -1,0 +1,127 @@
+/* CFA Practical Problem → Anki — background service worker.
+ * Orchestrates: content script message → LLM generation → Anki-Connect.
+ * All network calls and the API key live here, never in the page context.
+ */
+import { llmChat, generateExplanation } from './llm.js';
+import {
+  ankiTest,
+  ensureDeckAndModel,
+  findNoteIdByQid,
+  findNoteIdsByQids,
+  deleteNoteById,
+  addQuestionNote
+} from './anki.js';
+
+const DEFAULT_SETTINGS = {
+  apiBaseUrl: 'https://api.openai.com/v1',
+  apiKey: '',
+  model: 'gpt-4o-mini',
+  apiStyle: 'chat', // 'chat' | 'responses'
+  ankiUrl: 'http://127.0.0.1:8765',
+  deckName: 'CFA::Practical Problems'
+};
+
+async function getSettings() {
+  const stored = await chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS));
+  return { ...DEFAULT_SETTINGS, ...stored };
+}
+
+function isLocalEndpoint(url) {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'localhost' || host === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+// Fetches only bypass CORS for origins covered by host permissions.
+// api.openai.com comes from manifest host_permissions; custom endpoints need
+// the optional permission the options page requests on save / test.
+async function ensureApiHostPermission(apiBaseUrl) {
+  let origin;
+  try {
+    origin = new URL(apiBaseUrl).origin;
+  } catch {
+    return false;
+  }
+  if (origin.includes('api.openai.com')) return true;
+  return chrome.permissions.contains({ origins: [origin + '/*'] });
+}
+
+// Anki is the only source of truth for whether a card exists: saving always
+// replaces an existing card — the extension keeps no local saved-state.
+async function handleSave(payload) {
+  const settings = await getSettings();
+  if (!settings.apiBaseUrl || !settings.model) {
+    throw new Error('LLM settings are missing — open the extension options page.');
+  }
+  if (!settings.apiKey && !isLocalEndpoint(settings.apiBaseUrl)) {
+    throw new Error('API key is not configured — open the extension options page.');
+  }
+  if (!(await ensureApiHostPermission(settings.apiBaseUrl))) {
+    throw new Error('Host permission for the API is missing — open the extension options page and click "Test LLM" to grant it.');
+  }
+
+  const existing = await findNoteIdByQid(payload.qid, settings.ankiUrl);
+  let replaced = false;
+  if (existing) {
+    try {
+      await deleteNoteById(existing, settings.ankiUrl);
+      replaced = true;
+    } catch {
+      // Note already gone — proceed with a fresh add.
+    }
+  }
+
+  const llm = await generateExplanation(payload, settings);
+  await ensureDeckAndModel(settings);
+  const noteId = await addQuestionNote({ settings, payload, llm });
+  // Verify the note actually landed in Anki before reporting success —
+  // the button only flips to "added" when this re-query confirms it.
+  const confirmed = await findNoteIdByQid(payload.qid, settings.ankiUrl);
+  if (!confirmed) {
+    throw new Error('The card was submitted but Anki did not confirm it — check the deck manually.');
+  }
+  return { ok: true, verified: true, replaced, noteId };
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === 'SAVE_QUESTION') {
+    handleSave(msg.payload)
+      .then(sendResponse)
+      .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true; // async response
+
+  } else if (msg?.type === 'CHECK_STATUS') {
+    (async () => {
+      const { ankiUrl } = await getSettings();
+      return { ok: true, map: await findNoteIdsByQids(msg.qids || [], ankiUrl) };
+    })()
+      .then(sendResponse)
+      .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+
+  } else if (msg?.type === 'TEST_ANKI') {
+    ankiTest(msg.ankiUrl)
+      .then(() => sendResponse({ ok: true }))
+      .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+
+  } else if (msg?.type === 'TEST_LLM') {
+    (async () => {
+      if (!(await ensureApiHostPermission(msg.settings?.apiBaseUrl))) {
+        throw new Error('Host permission for the API is missing — click "Save settings" first to grant it.');
+      }
+      const text = await llmChat({
+        ...msg.settings,
+        system: 'You are a helpful assistant.',
+        user: 'Reply with exactly the word: OK'
+      });
+      return { ok: true, sample: String(text).slice(0, 120) };
+    })()
+      .then(sendResponse)
+      .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+  }
+});

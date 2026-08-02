@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CFA → Anki — Options</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    max-width: 640px;
+    margin: 32px auto;
+    padding: 0 20px;
+    color: #1e293b;
+  }
+  h1 { font-size: 20px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: #64748b; margin: 26px 0 10px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
+  input, select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    font-size: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+  }
+  input:focus, select:focus { outline: 2px solid #2563eb55; border-color: #2563eb; }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  button {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: #fff;
+    cursor: pointer;
+    margin: 8px 8px 0 0;
+  }
+  button.secondary { background: #fff; color: #2563eb; }
+  #status { margin-top: 14px; font-size: 13px; min-height: 18px; }
+  #status.ok { color: #16a34a; }
+  #status.err { color: #dc2626; white-space: pre-wrap; }
+  .hint { font-size: 12px; color: #64748b; margin-top: 4px; }
+  .hint code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>CFA Practical Problems → Anki</h1>
+
+  <h2>LLM (explanation generation)</h2>
+  <div class="row">
+    <div>
+      <label for="apiBaseUrl">API base URL</label>
+      <input id="apiBaseUrl" type="text" spellcheck="false" placeholder="https://api.openai.com/v1">
+      <div class="hint">Any OpenAI-compatible endpoint. The client appends <code>/chat/completions</code> or <code>/responses</code>.</div>
+    </div>
+    <div style="max-width:150px">
+      <label for="apiStyle">API style</label>
+      <select id="apiStyle">
+        <option value="chat">Chat Completions</option>
+        <option value="responses">Responses API</option>
+      </select>
+    </div>
+  </div>
+
+  <label for="apiKey">API key</label>
+  <input id="apiKey" type="password" spellcheck="false" placeholder="sk-…">
+  <div class="hint">Stored locally in <code>chrome.storage.local</code>. Leave empty for local endpoints (e.g. Ollama).</div>
+
+  <label for="model">Model</label>
+  <input id="model" type="text" spellcheck="false" placeholder="gpt-4o-mini">
+
+  <h2>Anki</h2>
+  <label for="ankiUrl">Anki-Connect URL</label>
+  <input id="ankiUrl" type="text" spellcheck="false" placeholder="http://127.0.0.1:8765">
+
+  <label for="deckName">Target deck</label>
+  <input id="deckName" type="text" spellcheck="false" placeholder="CFA::Practical Problems">
+  <div class="hint">Created automatically if it doesn't exist. Use <code>::</code> for subdecks.</div>
+
+  <div style="margin-top:22px">
+    <button id="save">Save settings</button>
+    <button id="test-anki" class="secondary">Test Anki</button>
+    <button id="test-llm" class="secondary">Test LLM</button>
+  </div>
+  <div id="status"></div>
+
+  <h2>Setup notes</h2>
+  <div class="hint">
+    1. Install the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank">AnkiConnect</a> add-on in Anki.<br>
+    2. In AnkiConnect's config, set <code>"webCorsOriginList": ["chrome-extension://&lt;your-extension-id&gt;"]</code> —
+    the id is shown at <code>chrome://extensions</code> after loading the extension.<br>
+    3. When you save a custom API base URL (not api.openai.com), Chrome will ask for permission to reach that host.
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

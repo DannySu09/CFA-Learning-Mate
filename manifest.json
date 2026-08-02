@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "CFA Practical Problems → Anki",
+  "version": "0.1.0",
+  "description": "Save CFA Institute practical problems to Anki with LLM-generated storytelling explanations and a CFA term glossary.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*",
+    "https://api.openai.com/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://learn.cfainstitute.org/*",
+        "https://*.cfainstitute.org/*",
+        "https://*.insproserv.net/*"
+      ],
+      "js": ["src/content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "src/options.html"
+}
