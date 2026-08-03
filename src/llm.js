@@ -11,8 +11,10 @@ function buildHeaders(apiKey) {
   return headers;
 }
 
-/** Low-level chat call; returns the raw text reply. */
-export async function llmChat({ apiBaseUrl, apiKey, model, apiStyle, system, user }) {
+/** Low-level chat call; returns the raw text reply. Pass json: true when
+ * the reply must be a JSON object (pins response_format, which is faster
+ * and more reliable than hoping the model formats it correctly). */
+export async function llmChat({ apiBaseUrl, apiKey, model, apiStyle, system, user, json = false }) {
   const url = apiStyle === 'responses'
     ? `${apiBaseUrl}/responses`
     : `${apiBaseUrl}/chat/completions`;
@@ -25,7 +27,10 @@ export async function llmChat({ apiBaseUrl, apiKey, model, apiStyle, system, use
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
-        ]
+        ],
+        // JSON mode requires the word "json" somewhere in the messages —
+        // the study-note prompt already contains it.
+        ...(json ? { response_format: { type: 'json_object' } } : {})
       });
 
   const res = await fetch(url, {
@@ -151,6 +156,7 @@ export function parseLlmJson(text) {
 export async function generateExplanation(payload, settings) {
   const raw = await llmChat({
     ...settings,
+    json: true,
     system: SYSTEM_PROMPT,
     user: buildUserPrompt(payload)
   });

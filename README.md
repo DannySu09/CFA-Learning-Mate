@@ -111,9 +111,11 @@ The CFA Institute practice page — the source UI the extension operates on:
   images scaled to the card width); the same styles appear in the on-page
   preview. Existing note types pick the updated CSS up automatically.
 - The LLM writes formulas as LaTeX math — `\( … \)` inline, `\[ … \]` on
-  their own line. Anki's built-in MathJax renders them in the card, and the
-  on-page preview typesets them with the page's MathJax when present (or a
-  loaded copy of MathJax, CSP permitting). Math in the original page markup
+  their own line (messy variants like `$$…$$`, bare `[ … ]` or doubled
+  backslashes are normalized). Anki's built-in MathJax renders them in the
+  card; the on-page preview renders a dependency-free stand-in (fractions,
+  sup/sub, symbols), since the page's MathJax isn't reachable from the
+  content script's isolated world. Math in the original page markup
   (MathML) still degrades to plain text.
 - The API key is stored in `chrome.storage.local`; requests go directly from
   the extension to your chosen endpoint.

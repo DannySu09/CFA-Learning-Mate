@@ -209,6 +209,19 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
   font-size: 1.08em;
 }
 .formula-inline { font-family: Georgia, "Times New Roman", Times, serif; }
+/* Preview-only math stand-in (Anki renders the real formula via MathJax):
+   fractions stack numerator over denominator, sqrt overlays the radicand. */
+.fraction {
+  display: inline-flex;
+  flex-direction: column;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.15;
+  margin: 0 2px;
+}
+.frac-num { padding: 0 4px 1px; border-bottom: 1px solid currentColor; }
+.frac-den { padding: 1px 4px 0; }
+.sqrt-body { border-top: 1px solid currentColor; padding-top: 1px; }
 /* Terms — flat rows with an em-dash, story in light italic below */
 .term { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
 .term:last-child { border-bottom: none; }

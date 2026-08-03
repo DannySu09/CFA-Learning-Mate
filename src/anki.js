@@ -155,14 +155,32 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-// Escape text and wrap LaTeX delimiters in elements: \[ … \] (display math)
-// becomes a block that takes its own line, \( … \) (inline) stays inline.
-// Anki's built-in MathJax renders the delimiters wherever they appear; the
-// wrapped source stays readable in a preview before MathJax runs.
+// Escape text and wrap LaTeX math in elements: \[ … \] (display) becomes a
+// block that takes its own line, \( … \) (inline) stays inline. The
+// delimiters are KEPT inside the wrapper so Anki's built-in MathJax (and
+// the page's MathJax, in the preview) can render the formula — the wrapper
+// only controls layout. Models don't always emit clean \[ … \]: doubled
+// backslashes (\\frac), $$ … $$ and bare [ … ] blocks holding TeX commands
+// are all normalized to \( … \) / \[ … \].
 function wrapMath(text) {
-  return escapeHtml(text)
-    .replace(/\\\[([\s\S]*?)\\\]/g, '<div class="formula-display">$1</div>')
-    .replace(/\\\(([\s\S]*?)\\\)/g, '<span class="formula-inline">$1</span>');
+  let t = escapeHtml(text);
+  // Collapse over-escaped backslashes (\\frac → \frac); doubling can nest,
+  // so loop until stable. Only before letters or brackets — never before
+  // newlines/spaces (TeX line breaks stay intact).
+  let prev;
+  do {
+    prev = t;
+    t = t.replace(/(\\\\)(?=[a-zA-Z\[\]()])/g, '\\');
+  } while (t !== prev);
+  return t
+    .replace(/\\\[([\s\S]*?)\\\]/g, '<div class="formula-display">\\[$1\\]</div>')
+    // Bare [ … ] that holds TeX commands, e.g. [ \frac{a}{b} ]; \[ … \]
+    // blocks (already wrapped above) and \left[…\right] pairs are left
+    // alone — so exclude brackets preceded by a backslash or \left/\right.
+    .replace(/(?<!\\)(?<!\\left)\[([\s\S]*?)(?<!\\)(?<!\\right)\]/g, (m, inner) =>
+      /\\[a-zA-Z]/.test(inner) ? `<div class="formula-display">\\[${inner}\\]</div>` : m)
+    .replace(/\$\$([\s\S]*?)\$\$/g, '<div class="formula-display">\\[$1\\]</div>')
+    .replace(/\\\(([\s\S]*?)\\\)/g, '<span class="formula-inline">\\($1\\)</span>');
 }
 
 // Semantic option markup: letter chip + text. Answer state is conveyed by
@@ -564,6 +582,19 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
   font-size: 1.08em;
 }
 .formula-inline { font-family: Georgia, "Times New Roman", Times, serif; }
+/* Preview-only math stand-in (Anki renders the real formula via MathJax):
+   fractions stack numerator over denominator, sqrt overlays the radicand. */
+.fraction {
+  display: inline-flex;
+  flex-direction: column;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.15;
+  margin: 0 2px;
+}
+.frac-num { padding: 0 4px 1px; border-bottom: 1px solid currentColor; }
+.frac-den { padding: 1px 4px 0; }
+.sqrt-body { border-top: 1px solid currentColor; padding-top: 1px; }
 /* Terms — flat rows with an em-dash, story in light italic below */
 .term { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
 .term:last-child { border-bottom: none; }

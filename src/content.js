@@ -338,28 +338,104 @@
     qEl.appendChild(wrap);
   }
 
-  // Render LaTeX math inside a preview shadow root. CFA pages already load
-  // MathJax — use it (v3 typesetPromise, v2 Hub); otherwise load MathJax 3
-  // from a CDN once (CSP permitting). Without MathJax the styled LaTeX
-  // source still shows, display math on its own line.
-  let mathJaxLoaded = false;
-  function typesetMath(root) {
-    if (!/\\[\(\[]/.test(root.innerHTML)) return;
-    const M = window.MathJax;
-    if (M && typeof M.typesetPromise === 'function') {
-      M.typesetPromise([root]).catch(() => {});
-    } else if (M && M.Hub) {
-      M.Hub.Queue(['Typeset', M.Hub, root]);
-    } else if (!mathJaxLoaded) {
-      mathJaxLoaded = true;
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js';
-      s.async = true;
-      s.addEventListener('load', () => {
-        if (window.MathJax?.typesetPromise) window.MathJax.typesetPromise([root]).catch(() => {});
-      });
-      root.appendChild(s);
+  // Render LaTeX math in a preview shadow root. The page's MathJax is
+  // invisible to this isolated world, and CDN loads can be blocked by the
+  // page's CSP — so the preview renders a dependency-free stand-in:
+  // fractions, sup/sub and common symbols. Anki itself renders the real
+  // formula via MathJax; anything this parser doesn't know stays as written.
+  function renderPreviewMath(root) {
+    for (const el of root.querySelectorAll('.formula-display, .formula-inline')) {
+      const html = el.innerHTML
+        .replace(/\\\[([\s\S]*?)\\\]/g, (m, src) => renderFormula(src))
+        .replace(/\\\(([\s\S]*?)\\\)/g, (m, src) => renderFormula(src));
+      if (html !== el.innerHTML) el.innerHTML = html;
     }
+  }
+
+  // Tiny recursive TeX-subset parser (see renderPreviewMath for why).
+  function renderFormula(src) {
+    const SYMBOLS = {
+      times: '×', cdot: '⋅', div: '÷', pm: '±', mp: '∓', leq: '≤', geq: '≥',
+      neq: '≠', approx: '≈', equiv: '≡', sum: '∑', prod: '∏', int: '∫',
+      in: '∈', notin: '∉', subset: '⊂', supset: '⊃', to: '→',
+      rightarrow: '→', leftarrow: '←', leftrightarrow: '↔',
+      infinity: '∞', percent: '%', degree: '°', alpha: 'α', beta: 'β',
+      gamma: 'γ', delta: 'δ', theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π',
+      sigma: 'σ', phi: 'φ', omega: 'ω'
+    };
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const isLetter = ch => /[a-zA-Z]/.test(ch);
+
+    // { … } group → rendered html, or null when unbalanced/missing.
+    function group(s, pos) {
+      if (s[pos.i] !== '{') return null;
+      let depth = 1;
+      const start = ++pos.i;
+      while (pos.i < s.length && depth) {
+        if (s[pos.i] === '{') depth++;
+        else if (s[pos.i] === '}') depth--;
+        pos.i++;
+      }
+      if (depth) { pos.i = start - 1; return null; }
+      return parse(s.slice(start, pos.i - 1), { i: 0 }).html;
+    }
+
+    // One atom for ^/_ : a group, a command, or a single character.
+    function atom(s, pos) {
+      const g = group(s, pos);
+      if (g !== null) return g;
+      if (s[pos.i] === '\\') { pos.i++; return command(s, pos); }
+      return esc(s[pos.i++] || '');
+    }
+
+    function command(s, pos) {
+      let name = '';
+      while (pos.i < s.length && isLetter(s[pos.i])) name += s[pos.i++];
+      if (name === 'frac') {
+        const num = group(s, pos);
+        const den = group(s, pos);
+        if (num !== null && den !== null) {
+          return `<span class="fraction"><span class="frac-num">${num}</span><span class="frac-den">${den}</span></span>`;
+        }
+      }
+      if (name === 'sqrt') {
+        const g = group(s, pos);
+        if (g !== null) return `<span class="sqrt"><span class="sqrt-body">${g}</span></span>`;
+        return '√' + atom(s, pos);
+      }
+      if (name === 'text' || name === 'mathrm' || name === 'textrm' || name === 'textit' || name === 'mbox') {
+        const g = group(s, pos);
+        if (g !== null) return g;
+      }
+      if (name === 'left' || name === 'right' || name === 'big' || name === 'Big' || name === 'bigg' || name === 'Bigg') {
+        const ch = s[pos.i++] || '';
+        return ch === '.' ? '' : esc(ch);
+      }
+      if (!name) {
+        const ch = s[pos.i] || '';
+        if (ch === ',' || ch === ';' || ch === '!' || ch === ' ') { pos.i++; return '&nbsp;'; }
+        return '\\';
+      }
+      if (name === 'quad' || name === 'qquad') return '&nbsp;&nbsp;';
+      if (name === ',' || name === ';' || name === '!' || name === ' ') return '&nbsp;';
+      const sym = SYMBOLS[name];
+      return sym !== undefined ? esc(sym) : '\\' + name;
+    }
+
+    function parse(s, pos) {
+      let out = '';
+      while (pos.i < s.length) {
+        const ch = s[pos.i];
+        if (ch === '\\') { pos.i++; out += command(s, pos); }
+        else if (ch === '^') { pos.i++; out += `<sup>${atom(s, pos)}</sup>`; }
+        else if (ch === '_') { pos.i++; out += `<sub>${atom(s, pos)}</sub>`; }
+        else if (ch === '{') { const g = group(s, pos); out += g !== null ? g : esc(ch); }
+        else { out += esc(ch); pos.i++; }
+      }
+      return { html: out };
+    }
+
+    return parse(src, { i: 0 }).html;
   }
 
   // Show a card face right under the button. HTML/CSS are rendered by the
@@ -390,7 +466,7 @@
       previewRoots.set(host, root);
     }
     root.innerHTML = `<style>${css}</style>${html}`;
-    typesetMath(root);
+    renderPreviewMath(root);
   }
 
   function refreshButtons() {
