@@ -78,6 +78,7 @@
   display: block; margin: 12px 0 4px;
   border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden;
   background: #fff; box-shadow: 0 2px 12px rgba(15, 23, 42, .08);
+  text-align: left; /* the page's styles can't re-center the preview */
 }
 .cfa2anki-toast {
   position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
@@ -337,6 +338,30 @@
     qEl.appendChild(wrap);
   }
 
+  // Render LaTeX math inside a preview shadow root. CFA pages already load
+  // MathJax — use it (v3 typesetPromise, v2 Hub); otherwise load MathJax 3
+  // from a CDN once (CSP permitting). Without MathJax the styled LaTeX
+  // source still shows, display math on its own line.
+  let mathJaxLoaded = false;
+  function typesetMath(root) {
+    if (!/\\[\(\[]/.test(root.innerHTML)) return;
+    const M = window.MathJax;
+    if (M && typeof M.typesetPromise === 'function') {
+      M.typesetPromise([root]).catch(() => {});
+    } else if (M && M.Hub) {
+      M.Hub.Queue(['Typeset', M.Hub, root]);
+    } else if (!mathJaxLoaded) {
+      mathJaxLoaded = true;
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js';
+      s.async = true;
+      s.addEventListener('load', () => {
+        if (window.MathJax?.typesetPromise) window.MathJax.typesetPromise([root]).catch(() => {});
+      });
+      root.appendChild(s);
+    }
+  }
+
   // Show a card face right under the button. HTML/CSS are rendered by the
   // background from the note type's own templates (single source of truth)
   // and live in a closed shadow root — page styles can't restyle the card,
@@ -365,6 +390,7 @@
       previewRoots.set(host, root);
     }
     root.innerHTML = `<style>${css}</style>${html}`;
+    typesetMath(root);
   }
 
   function refreshButtons() {
@@ -436,9 +462,47 @@
         ankiState.clear();
         for (const [qid, noteId] of Object.entries(res.map || {})) ankiState.set(qid, noteId);
         refreshButtons();
+        // Questions already in Anki get their card back rendered under the
+        // button (e.g. after a reload) so the explanation stays readable.
+        fetchCardBacks();
       }
     } catch {
       // Anki unreachable — keep the last known status.
+    }
+  }
+
+  // qids with an in-flight card-back fetch (avoid duplicate requests).
+  const pendingBacks = new Set();
+  async function fetchCardBacks() {
+    if (!runtimeAvailable()) return;
+    const missing = [];
+    for (const qEl of collectQuestions()) {
+      const qid = getQid(qEl);
+      if (!qid || !ankiState.has(qid)) continue; // only added problems
+      if (previewCache.get(qid)?.back || pendingBacks.has(qid)) continue;
+      pendingBacks.add(qid);
+      missing.push({ qid, qEl });
+    }
+    if (!missing.length) return;
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'GET_CARD_BACKS',
+        qids: missing.map(m => m.qid)
+      });
+      if (res?.ok && res.backs) {
+        for (const { qid, qEl } of missing) {
+          const b = res.backs[qid];
+          if (b?.cardBackHtml && b.cardCss) {
+            const prev = previewCache.get(qid) || {};
+            previewCache.set(qid, { ...prev, back: { html: b.cardBackHtml, css: b.cardCss } });
+            renderPreview(qEl, 'back', b.cardBackHtml, b.cardCss);
+          }
+        }
+      }
+    } catch {
+      // Anki unreachable — keep the last known state.
+    } finally {
+      for (const m of missing) pendingBacks.delete(m.qid);
     }
   }
 
@@ -465,17 +529,24 @@
         delete btn.dataset.busy;
         refreshButtons();
         showPopover(wrap, res.replaced ? 'Card re-added to Anki ✓' : 'Card added to Anki ✓');
-        // The card is saved: show the front under the button, and keep the
-        // back (reusing the "AI Explain" content, re-rendered from Anki's
-        // stored copy so it always matches what was actually stored).
+        // The card is saved: show its faces under the button. The back is
+        // always shown (reusing the "AI Explain" content, re-rendered from
+        // Anki's stored copy so it matches what was stored); the front is
+        // only shown for direct saves — after "AI Explain" it just repeats
+        // the question already on the page.
         if (res.cardFrontHtml && res.cardCss) {
           const prev = previewCache.get(payload.qid) || {};
+          const aiExplained = !!(prev.llm || llm);
           previewCache.set(payload.qid, {
             llm: prev.llm || llm || null,
-            front: { html: res.cardFrontHtml, css: res.cardCss },
+            front: aiExplained ? null : { html: res.cardFrontHtml, css: res.cardCss },
             back: res.cardBackHtml ? { html: res.cardBackHtml, css: res.cardCss } : prev.back || null
           });
-          renderPreview(qEl, 'front', res.cardFrontHtml, res.cardCss);
+          if (aiExplained) {
+            qEl.querySelector(`.${TAG}-preview-front`)?.remove();
+          } else {
+            renderPreview(qEl, 'front', res.cardFrontHtml, res.cardCss);
+          }
           if (res.cardBackHtml) renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss);
         }
       } else {
@@ -508,13 +579,15 @@
     try {
       const res = await chrome.runtime.sendMessage({ type: 'EXPLAIN_QUESTION', payload });
       if (res?.ok && res.cardBackHtml && res.cardCss) {
-        const prev = previewCache.get(payload.qid) || {};
+        // The explanation replaces the front preview — the front would just
+        // repeat the question that is already on the page.
         previewCache.set(payload.qid, {
-          ...prev,
           llm: res.llm,
+          front: null,
           back: { html: res.cardBackHtml, css: res.cardCss }
         });
         renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss);
+        qEl.querySelector(`.${TAG}-preview-front`)?.remove();
         showPopover(wrap, 'Explanation ready — click Save to Anki to add the card');
       } else {
         toast(`Could not generate explanation: ${res?.error || 'the request failed — try again'}`, true);

@@ -21,6 +21,11 @@
   max-width: 680px;
   margin: 0 auto;
   padding: 22px 26px;
+  /* Alignment is inherited from the surroundings (Anki's reviewer, or the
+     page hosting the preview — whose styles can center text responsively),
+     so pin it: text always starts at the left, at any resolution. */
+  text-align: left;
+  direction: ltr;
 }
 /* Masthead label with a hairline running to the right edge */
 .card .q-kicker {
@@ -54,9 +59,14 @@
   margin: 10px 0 14px;
 }
 .vignette h2 { font-size: 16px; margin: 6px 0; }
-.vignette table { border-collapse: collapse; margin: 8px auto; }
-.vignette th, .vignette td { border: 1px solid #cbd5e1; padding: 5px 8px; }
-.vignette th { background: #f1f5f9; }
+/* Tables: CFA questions carry exhibits and data as bare tables (their
+   classes/styles are stripped during sanitization), so give every table in
+   the card a consistent ledger look. */
+.card table { border-collapse: collapse; margin: 10px 0; max-width: 100%; }
+.card th, .card td { border: 1px solid #cbd5e1; padding: 5px 8px; vertical-align: top; }
+.card th { background: #f1f5f9; font-weight: 600; }
+.vignette table { margin: 10px auto; } /* exhibit tables stay centered */
+.card img { max-width: 100%; height: auto; }
 
 /* Options: quiet bordered rows — outlined letter chip, text, state tag */
 .options { margin: 16px 0 4px; }
@@ -188,6 +198,17 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
   color: #64748b;
   margin-bottom: 3px;
 }
+/* Math: display formulas from the LLM get their own line; Anki's MathJax
+   (or the page's, in the preview) renders the LaTeX inside. Without MathJax
+   the styled source still reads as a formula block. */
+.formula-display {
+  display: block;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: Georgia, "Times New Roman", Times, serif;
+  font-size: 1.08em;
+}
+.formula-inline { font-family: Georgia, "Times New Roman", Times, serif; }
 /* Terms — flat rows with an em-dash, story in light italic below */
 .term { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
 .term:last-child { border-bottom: none; }
@@ -217,9 +238,8 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .official-wrong .official-letter { color: #b91c1c; }
 .official-body { flex: 1; min-width: 0; }
 .official-body p { margin: 6px 0; }
-.official-body table { border-collapse: collapse; margin: 8px 0; }
-.official-body th, .official-body td { border: 1px solid #cbd5e1; padding: 4px 8px; }
-.official-body th { background: #f1f5f9; }
+/* Table borders/padding come from the card-wide rules above. */
+.official-body table { margin: 8px 0; }
 .source {
   margin-top: 26px;
   padding-top: 10px;
@@ -240,8 +260,8 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .nightMode .q-stem { color: #f1f5f9; }
 .nightMode .card.back .q-stem-echo { color: #94a3b8; }
 .nightMode .vignette { border-color: #334155; background: #1e293b; }
-.nightMode .vignette th { background: #334155; }
-.nightMode .vignette th, .nightMode .vignette td { border-color: #475569; }
+.nightMode .card th { background: #334155; }
+.nightMode .card th, .nightMode .card td { border-color: #475569; }
 .nightMode .opt { border-color: #334155; background: transparent; }
 .nightMode .opt-letter { border-color: #475569; background: transparent; color: #cbd5e1; }
 .nightMode .card.back .opt-correct { border-color: #166534; background: #052e16; }
@@ -272,8 +292,6 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .nightMode .official-correct .official-letter { color: #4ade80; }
 .nightMode .official-wrong { border-color: #7f1d1d; background: #2a0a0a; }
 .nightMode .official-wrong .official-letter { color: #f87171; }
-.nightMode .official-body th { background: #334155; }
-.nightMode .official-body th, .nightMode .official-body td { border-color: #475569; }
 .nightMode .answer-banner { color: #4ade80; }
 .nightMode .picked-banner { color: #f87171; }
 .nightMode .source { border-color: #1e293b; color: #475569; }
@@ -293,7 +311,7 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
   <div class="verdict verdict-correct">✓ B. Bond B, the zero-coupon bond with five years to maturity</div>
   <div class="verdict-note">✗ You chose C. Bond C, the 5% coupon bond with two years to maturity</div>
   <div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips"><div class="official-tip official-correct"><span class="official-letter">✓ B</span><div class="official-body"><p>Correct. The zero-coupon bond has the highest duration because its entire cash flow occurs at maturity, maximizing the weighted average time to receipt.</p></div></div><div class="official-tip official-wrong"><span class="official-letter">✗ C</span><div class="official-body"><p>Incorrect. Although Bond C has a lower coupon than Bond A, its two-year maturity significantly reduces its duration relative to the five-year zero.</p></div></div></div></div>
-  <div class="section"><div class="section-title">Why this answer</div><div class="section-body"><div class="big-idea">Duration is the weighted average time to receive a bond's cash flows — the later and smaller the interim coupons, the higher the duration.</div><p>All three bonds yield 6%, so duration is driven by coupon size and maturity. Bond B pays nothing until maturity, so every cash flow is weighted at five years.</p><div class="why-wrong-title">Why the others are wrong</div><ul class="why-wrong"><li><strong>A.</strong> The 10% coupon pulls cash flows earlier, lowering duration below the zero-coupon bond.</li><li><strong>C.</strong> A low coupon raises duration, but the two-year maturity caps it well below the five-year zero.</li></ul><div class="memory-hook">Zero coupon = zero brakes. With nothing paid early, duration runs all the way to maturity.</div></div></div>
+  <div class="section"><div class="section-title">Why this answer</div><div class="section-body"><div class="big-idea">Duration is the weighted average time to receive a bond's cash flows — the later and smaller the interim coupons, the higher the duration.</div><p>All three bonds yield 6%, so duration is driven by coupon size and maturity:</p><div class="formula-display">\[ \text{Duration} = \frac{\sum_{t=1}^{n} t \cdot PV(CF_t)}{\sum_{t=1}^{n} PV(CF_t)} \]</div><p>Bond B pays nothing until maturity, so every cash flow is weighted at five years.</p><div class="why-wrong-title">Why the others are wrong</div><ul class="why-wrong"><li><strong>A.</strong> The 10% coupon pulls cash flows earlier, lowering duration below the zero-coupon bond.</li><li><strong>C.</strong> A low coupon raises duration, but the two-year maturity caps it well below the five-year zero.</li></ul><div class="memory-hook">Zero coupon = zero brakes. With nothing paid early, duration runs all the way to maturity.</div></div></div>
   <div class="section"><div class="section-title">Key terms</div><div class="section-body terms"><div class="term"><span class="term-name">Macaulay Duration</span> <span class="term-def">The weighted average time until a bond's cash flows are received, expressed in years.</span><div class="term-story">Picture a see-saw: duration is the fulcrum point where all the coupon "weights" balance.</div></div><div class="term"><span class="term-name">Modified Duration</span> <span class="term-def">Macaulay duration divided by (1 + yield), giving direct price sensitivity per 1% yield change.</span></div></div></div>
   <div class="source">https://learn.cfainstitute.org/…/fixed-income#q-4821</div>
 </div></div></div>
@@ -304,9 +322,10 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
   <div class="verdict verdict-correct">✓ B. Bond B, the zero-coupon bond with five years to maturity</div>
   <div class="verdict-note">✗ You chose C. Bond C, the 5% coupon bond with two years to maturity</div>
   <div class="section"><div class="section-title">Official Tips</div><div class="section-body official-tips"><div class="official-tip official-correct"><span class="official-letter">✓ B</span><div class="official-body"><p>Correct. The zero-coupon bond has the highest duration because its entire cash flow occurs at maturity, maximizing the weighted average time to receipt.</p></div></div><div class="official-tip official-wrong"><span class="official-letter">✗ C</span><div class="official-body"><p>Incorrect. Although Bond C has a lower coupon than Bond A, its two-year maturity significantly reduces its duration relative to the five-year zero.</p></div></div></div></div>
-  <div class="section"><div class="section-title">Why this answer</div><div class="section-body"><div class="big-idea">Duration is the weighted average time to receive a bond's cash flows — the later and smaller the interim coupons, the higher the duration.</div><p>All three bonds yield 6%, so duration is driven by coupon size and maturity. Bond B pays nothing until maturity, so every cash flow is weighted at five years.</p><div class="why-wrong-title">Why the others are wrong</div><ul class="why-wrong"><li><strong>A.</strong> The 10% coupon pulls cash flows earlier, lowering duration below the zero-coupon bond.</li><li><strong>C.</strong> A low coupon raises duration, but the two-year maturity caps it well below the five-year zero.</li></ul><div class="memory-hook">Zero coupon = zero brakes. With nothing paid early, duration runs all the way to maturity.</div></div></div>
+  <div class="section"><div class="section-title">Why this answer</div><div class="section-body"><div class="big-idea">Duration is the weighted average time to receive a bond's cash flows — the later and smaller the interim coupons, the higher the duration.</div><p>All three bonds yield 6%, so duration is driven by coupon size and maturity:</p><div class="formula-display">\[ \text{Duration} = \frac{\sum_{t=1}^{n} t \cdot PV(CF_t)}{\sum_{t=1}^{n} PV(CF_t)} \]</div><p>Bond B pays nothing until maturity, so every cash flow is weighted at five years.</p><div class="why-wrong-title">Why the others are wrong</div><ul class="why-wrong"><li><strong>A.</strong> The 10% coupon pulls cash flows earlier, lowering duration below the zero-coupon bond.</li><li><strong>C.</strong> A low coupon raises duration, but the two-year maturity caps it well below the five-year zero.</li></ul><div class="memory-hook">Zero coupon = zero brakes. With nothing paid early, duration runs all the way to maturity.</div></div></div>
   <div class="section"><div class="section-title">Key terms</div><div class="section-body terms"><div class="term"><span class="term-name">Macaulay Duration</span> <span class="term-def">The weighted average time until a bond's cash flows are received, expressed in years.</span><div class="term-story">Picture a see-saw: duration is the fulcrum point where all the coupon "weights" balance.</div></div><div class="term"><span class="term-name">Modified Duration</span> <span class="term-def">Macaulay duration divided by (1 + yield), giving direct price sensitivity per 1% yield change.</span></div></div></div>
   <div class="source">https://learn.cfainstitute.org/…/fixed-income#q-4821</div>
 </div></div></div></div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 </body></html>

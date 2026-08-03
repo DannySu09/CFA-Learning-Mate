@@ -20,7 +20,9 @@ The CFA Institute practice page — the source UI the extension operates on:
    itself** (batched `findNotes` on the `cfa-qid-<id>` tags) — the extension
    keeps no local saved-state, so it always reflects reality (delete a card
    in Anki and the pill disappears). Added questions show **✓ Added to
-   Anki** with a **↻ Re-add to Anki** button.
+   Anki** with a **↻ Re-add to Anki** button, and the card back is rendered
+   below the button (fetched from Anki on page load) so you can reread the
+   explanation.
 3. **Extract** — on click, the question stem, options, the correct answer
    (`svg[name="IconCheck"]`) and your pick (`svg[name="IconX"]` + checked) are
    read from the DOM. Shared vignette scenarios (intro text + exhibit tables)
@@ -39,10 +41,10 @@ The CFA Institute practice page — the source UI the extension operates on:
    Saving **always replaces** an existing card (checked by tag
    `cfa-qid-<id>`), and the note is re-queried afterwards to verify it
    landed before the UI flips to "added". If **AI Explain** ran first, its
-   note is **reused** — no second LLM request. Uses the `CFA Practical
-   Problem` note type whose card templates render the styled UI. After a
-   successful add, the card's **front and back are rendered right below the
-   button** on the practice page — exactly what the card looks like in Anki.
+   note is **reused** — no second LLM request — and only the card back is
+   shown under the button (the front would just repeat the question already
+   on the page); direct saves show front and back. Uses the `CFA Practical
+   Problem` note type whose card templates render the styled UI.
 
 ### Card layout
 - **Front:** question stem + options (no answer revealed).
@@ -105,7 +107,14 @@ The CFA Institute practice page — the source UI the extension operates on:
 - The page's official per-option feedback is captured and shown **verbatim**
   in the **Official Tips** section of the card; it is also sent to the LLM as
   a reference so the generated explanation aligns with the official rationale.
-- Math formulas rendered by MathJax degrade to plain text on the card.
+- Exhibit tables and images are styled for the card (bordered ledger tables,
+  images scaled to the card width); the same styles appear in the on-page
+  preview. Existing note types pick the updated CSS up automatically.
+- The LLM writes formulas as LaTeX math — `\( … \)` inline, `\[ … \]` on
+  their own line. Anki's built-in MathJax renders them in the card, and the
+  on-page preview typesets them with the page's MathJax when present (or a
+  loaded copy of MathJax, CSP permitting). Math in the original page markup
+  (MathML) still degrades to plain text.
 - The API key is stored in `chrome.storage.local`; requests go directly from
   the extension to your chosen endpoint.
 - The note type is created once, only if missing — templates you customize

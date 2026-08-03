@@ -115,14 +115,24 @@ export async function deleteNoteById(noteId, ankiUrl) {
   return ankiInvoke('deleteNotes', { notes: [noteId] }, ankiUrl);
 }
 
-/** Stored field HTML of a note (name → value), as Anki has it on disk. */
-export async function getNoteFields(noteId, ankiUrl) {
-  const infos = await ankiInvoke('notesInfo', { notes: [noteId] }, ankiUrl);
-  const fields = {};
-  for (const [name, v] of Object.entries(infos?.[0]?.fields || {})) {
-    fields[name] = v?.value ?? '';
+/** Stored field HTML of several notes at once (noteId → name → value). */
+export async function getNotesFields(noteIds, ankiUrl) {
+  if (!noteIds.length) return {};
+  const infos = await ankiInvoke('notesInfo', { notes: noteIds }, ankiUrl);
+  const out = {};
+  for (const info of infos || []) {
+    const fields = {};
+    for (const [name, v] of Object.entries(info?.fields || {})) {
+      fields[name] = v?.value ?? '';
+    }
+    out[info.noteId] = fields;
   }
-  return fields;
+  return out;
+}
+
+/** Stored field HTML of a single note (name → value), as Anki has it on disk. */
+export async function getNoteFields(noteId, ankiUrl) {
+  return (await getNotesFields([noteId], ankiUrl))[noteId] ?? {};
 }
 
 /** Read-only: does the note type (if it exists) have the OfficialTips field?
@@ -143,6 +153,16 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Escape text and wrap LaTeX delimiters in elements: \[ … \] (display math)
+// becomes a block that takes its own line, \( … \) (inline) stays inline.
+// Anki's built-in MathJax renders the delimiters wherever they appear; the
+// wrapped source stays readable in a preview before MathJax runs.
+function wrapMath(text) {
+  return escapeHtml(text)
+    .replace(/\\\[([\s\S]*?)\\\]/g, '<div class="formula-display">$1</div>')
+    .replace(/\\\(([\s\S]*?)\\\)/g, '<span class="formula-inline">$1</span>');
 }
 
 // Semantic option markup: letter chip + text. Answer state is conveyed by
@@ -183,9 +203,9 @@ function buildOfficialTipsHtml(options) {
 // quiet italic line below (no nested boxes).
 function buildTermsHtml(terms) {
   return (terms || []).map(t =>
-    `<div class="term"><span class="term-name">${escapeHtml(t.term)}</span>` +
-    ` <span class="term-def">${escapeHtml(t.definition)}</span>` +
-    (t.story ? `<div class="term-story">${escapeHtml(t.story)}</div>` : '') +
+    `<div class="term"><span class="term-name">${wrapMath(t.term)}</span>` +
+    ` <span class="term-def">${wrapMath(t.definition)}</span>` +
+    (t.story ? `<div class="term-story">${wrapMath(t.story)}</div>` : '') +
     `</div>`
   ).join('');
 }
@@ -196,16 +216,16 @@ function buildTermsHtml(terms) {
 function buildExplanationHtml(llm) {
   if (llm.bigIdea || llm.paragraphs?.length || llm.wrongReasons?.length || llm.memoryHook) {
     const parts = [];
-    if (llm.bigIdea) parts.push(`<div class="big-idea">${escapeHtml(llm.bigIdea)}</div>`);
-    for (const p of llm.paragraphs || []) parts.push(`<p>${escapeHtml(p)}</p>`);
+    if (llm.bigIdea) parts.push(`<div class="big-idea">${wrapMath(llm.bigIdea)}</div>`);
+    for (const p of llm.paragraphs || []) parts.push(`<p>${wrapMath(p)}</p>`);
     if (llm.wrongReasons?.length) {
       const items = llm.wrongReasons
-        .map(r => `<li><strong>${escapeHtml(r.letter)}.</strong> ${escapeHtml(r.reason)}</li>`)
+        .map(r => `<li><strong>${escapeHtml(r.letter)}.</strong> ${wrapMath(r.reason)}</li>`)
         .join('');
       parts.push(`<div class="why-wrong-title">Why the others are wrong</div>`);
       parts.push(`<ul class="why-wrong">${items}</ul>`);
     }
-    if (llm.memoryHook) parts.push(`<div class="memory-hook">${escapeHtml(llm.memoryHook)}</div>`);
+    if (llm.memoryHook) parts.push(`<div class="memory-hook">${wrapMath(llm.memoryHook)}</div>`);
     return parts.join('');
   }
   return llm.explanationHtml || '';
@@ -353,6 +373,11 @@ const NOTE_CSS = `
   max-width: 680px;
   margin: 0 auto;
   padding: 22px 26px;
+  /* Alignment is inherited from the surroundings (Anki's reviewer, or the
+     page hosting the preview — whose styles can center text responsively),
+     so pin it: text always starts at the left, at any resolution. */
+  text-align: left;
+  direction: ltr;
 }
 /* Masthead label with a hairline running to the right edge */
 .card .q-kicker {
@@ -386,9 +411,14 @@ const NOTE_CSS = `
   margin: 10px 0 14px;
 }
 .vignette h2 { font-size: 16px; margin: 6px 0; }
-.vignette table { border-collapse: collapse; margin: 8px auto; }
-.vignette th, .vignette td { border: 1px solid #cbd5e1; padding: 5px 8px; }
-.vignette th { background: #f1f5f9; }
+/* Tables: CFA questions carry exhibits and data as bare tables (their
+   classes/styles are stripped during sanitization), so give every table in
+   the card a consistent ledger look. */
+.card table { border-collapse: collapse; margin: 10px 0; max-width: 100%; }
+.card th, .card td { border: 1px solid #cbd5e1; padding: 5px 8px; vertical-align: top; }
+.card th { background: #f1f5f9; font-weight: 600; }
+.vignette table { margin: 10px auto; } /* exhibit tables stay centered */
+.card img { max-width: 100%; height: auto; }
 
 /* Options: quiet bordered rows — outlined letter chip, text, state tag */
 .options { margin: 16px 0 4px; }
@@ -523,6 +553,17 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
   color: #64748b;
   margin-bottom: 3px;
 }
+/* Math: display formulas from the LLM get their own line; Anki's MathJax
+   (or the page's, in the preview) renders the LaTeX inside. Without MathJax
+   the styled source still reads as a formula block. */
+.formula-display {
+  display: block;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: Georgia, "Times New Roman", Times, serif;
+  font-size: 1.08em;
+}
+.formula-inline { font-family: Georgia, "Times New Roman", Times, serif; }
 /* Terms — flat rows with an em-dash, story in light italic below */
 .term { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
 .term:last-child { border-bottom: none; }
@@ -552,9 +593,8 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .official-wrong .official-letter { color: #b91c1c; }
 .official-body { flex: 1; min-width: 0; }
 .official-body p { margin: 6px 0; }
-.official-body table { border-collapse: collapse; margin: 8px 0; }
-.official-body th, .official-body td { border: 1px solid #cbd5e1; padding: 4px 8px; }
-.official-body th { background: #f1f5f9; }
+/* Table borders/padding come from the card-wide rules above. */
+.official-body table { margin: 8px 0; }
 .source {
   margin-top: 26px;
   padding-top: 10px;
@@ -575,8 +615,8 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .nightMode .q-stem { color: #f1f5f9; }
 .nightMode .card.back .q-stem-echo { color: #94a3b8; }
 .nightMode .vignette { border-color: #334155; background: #1e293b; }
-.nightMode .vignette th { background: #334155; }
-.nightMode .vignette th, .nightMode .vignette td { border-color: #475569; }
+.nightMode .card th { background: #334155; }
+.nightMode .card th, .nightMode .card td { border-color: #475569; }
 .nightMode .opt { border-color: #334155; background: transparent; }
 .nightMode .opt-letter { border-color: #475569; background: transparent; color: #cbd5e1; }
 .nightMode .card.back .opt-correct { border-color: #166534; background: #052e16; }
@@ -607,8 +647,6 @@ ul.why-wrong li strong { position: absolute; left: 0; color: #b91c1c; }
 .nightMode .official-correct .official-letter { color: #4ade80; }
 .nightMode .official-wrong { border-color: #7f1d1d; background: #2a0a0a; }
 .nightMode .official-wrong .official-letter { color: #f87171; }
-.nightMode .official-body th { background: #334155; }
-.nightMode .official-body th, .nightMode .official-body td { border-color: #475569; }
 .nightMode .answer-banner { color: #4ade80; }
 .nightMode .picked-banner { color: #f87171; }
 .nightMode .source { border-color: #1e293b; color: #475569; }

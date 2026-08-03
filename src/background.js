@@ -11,6 +11,7 @@ import {
   deleteNoteById,
   addQuestionNote,
   getNoteFields,
+  getNotesFields,
   renderCardFrontHtml,
   renderCardBackHtml,
   buildNoteFields,
@@ -125,6 +126,22 @@ async function handleExplain(payload) {
   return { ok: true, llm, ...preview };
 }
 
+// Render card backs for questions already saved in Anki, so the page can
+// show the explanation under the "Re-add to Anki" button (e.g. after a
+// reload, when the in-session preview cache is gone).
+async function handleCardBacks(qids) {
+  const { ankiUrl } = await getSettings();
+  const map = await findNoteIdsByQids(qids, ankiUrl);
+  // Object keys coerce to strings, but Anki-Connect needs numeric note ids —
+  // build the id list from the map values before any lookup.
+  const fieldsById = await getNotesFields([...new Set(Object.values(map))], ankiUrl);
+  const backs = {};
+  for (const [qid, noteId] of Object.entries(map)) {
+    if (fieldsById[noteId]) backs[qid] = renderCardBackHtml(fieldsById[noteId]);
+  }
+  return { ok: true, backs };
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === 'SAVE_QUESTION') {
     handleSave(msg.payload)
@@ -134,6 +151,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   } else if (msg?.type === 'EXPLAIN_QUESTION') {
     handleExplain(msg.payload)
+      .then(sendResponse)
+      .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+
+  } else if (msg?.type === 'GET_CARD_BACKS') {
+    handleCardBacks(msg.qids || [])
       .then(sendResponse)
       .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
     return true;

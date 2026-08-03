@@ -72,7 +72,8 @@ Rules:
   it; otherwise solve it yourself.
 - big_idea: the single most important takeaway, one short sentence.
 - paragraphs: 1-2 short paragraphs, max 3 sentences each. Plain text only —
-  no markdown, no HTML. Teach with a simple story or analogy.
+  no markdown, no HTML (LaTeX math like \[ ... \] is fine). Teach with a
+  simple story or analogy.
 - wrong_reasons: one entry per wrong option, one sentence each, plain text.
   Empty array if there are no wrong options.
 - memory_hook: one short memorable sentence, plain text.
@@ -84,6 +85,12 @@ Rules:
     "imagine that..." hook, or a tiny story, 1-3 sentences) that makes the
     term easy to understand and recall. Never a dry dictionary line.
   Empty array if there are none.
+- Math: whenever a concept involves a calculation, give the actual formula
+  in LaTeX — don't describe the calculation in words (e.g. write
+  \[ PV = \frac{FV}{(1+r)^n} \] instead of "PV is computed by dividing FV by
+  one plus r raised to the n-th power"). Put the formula on its own line in
+  display math \[ ... \]; use \( ... \) only for a short inline symbol. Keep
+  the surrounding prose brief — let the formula carry the math.
 - Be concise: the whole note must be scannable in under 30 seconds.
 - Respond with ONLY the JSON object. No code fences, no extra text.`;
 
