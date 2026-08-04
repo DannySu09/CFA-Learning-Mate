@@ -71,6 +71,10 @@
   <label for="model">Model</label>
   <input id="model" type="text" spellcheck="false" placeholder="gpt-4o-mini">
 
+  <label for="temperature">Temperature</label>
+  <input id="temperature" type="number" min="0" max="2" step="0.1" placeholder="0.4" style="max-width:150px">
+  <div class="hint">0–2 (default 0.4). Lower is more deterministic; higher is more creative.</div>
+
   <h2>Anki</h2>
   <label for="ankiUrl">Anki-Connect URL</label>
   <input id="ankiUrl" type="text" spellcheck="false" placeholder="http://127.0.0.1:8765">

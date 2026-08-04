@@ -14,16 +14,23 @@ function buildHeaders(apiKey) {
 /** Low-level chat call; returns the raw text reply. Pass json: true when
  * the reply must be a JSON object (pins response_format, which is faster
  * and more reliable than hoping the model formats it correctly). */
-export async function llmChat({ apiBaseUrl, apiKey, model, apiStyle, system, user, json = false }) {
+export async function llmChat({ apiBaseUrl, apiKey, model, temperature, apiStyle, system, user, json = false }) {
   const url = apiStyle === 'responses'
     ? `${apiBaseUrl}/responses`
     : `${apiBaseUrl}/chat/completions`;
 
+  // Optional temperature (0–2). Omit it when unset so the endpoint's own
+  // default applies; the options page and background defaults ship 0.4.
+  const t = temperature === undefined || temperature === null || temperature === ''
+    ? NaN
+    : Number(temperature);
+  const temp = Number.isFinite(t) ? { temperature: t } : {};
+
   const body = apiStyle === 'responses'
-    ? JSON.stringify({ model, instructions: system, input: user })
+    ? JSON.stringify({ model, ...temp, instructions: system, input: user })
     : JSON.stringify({
         model,
-        temperature: 0.4,
+        ...temp,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }

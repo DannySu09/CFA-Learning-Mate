@@ -1,10 +1,11 @@
 /* Options page logic. */
 
-const FIELDS = ['apiBaseUrl', 'apiKey', 'model', 'apiStyle', 'ankiUrl', 'deckName'];
+const FIELDS = ['apiBaseUrl', 'apiKey', 'model', 'temperature', 'apiStyle', 'ankiUrl', 'deckName'];
 const DEFAULTS = {
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o-mini',
+  temperature: 0.4,
   apiStyle: 'chat',
   ankiUrl: 'http://127.0.0.1:8765',
   deckName: 'CFA::Practical Problems'
@@ -19,7 +20,10 @@ async function load() {
 
 function readForm() {
   const out = {};
-  for (const f of FIELDS) out[f] = document.getElementById(f).value.trim();
+  for (const f of FIELDS) {
+    const v = document.getElementById(f).value.trim();
+    out[f] = f === 'temperature' ? (v === '' ? '' : Number(v)) : v;
+  }
   return out;
 }
 
@@ -51,6 +55,10 @@ document.getElementById('save').addEventListener('click', async () => {
   const origin = apiOrigin(s.apiBaseUrl);
   if (!origin) {
     setStatus('Invalid API base URL.', false);
+    return;
+  }
+  if (s.temperature === '' || Number.isNaN(s.temperature) || s.temperature < 0 || s.temperature > 2) {
+    setStatus('Temperature must be a number between 0 and 2.', false);
     return;
   }
   await chrome.storage.local.set(s);

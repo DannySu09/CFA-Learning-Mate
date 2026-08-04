@@ -76,8 +76,9 @@ The CFA Institute practice page — the source UI the extension operates on:
    *Load unpacked* → select this folder.
 4. **Configure** — open the extension's options page and set:
    - API base URL (any OpenAI-compatible endpoint; defaults to
-     `https://api.openai.com/v1`), API key, model, and API style
-     (`chat` = Chat Completions, `responses` = Responses API)
+     `https://api.openai.com/v1`), API key, model, API style
+     (`chat` = Chat Completions, `responses` = Responses API), and
+     temperature (0–2, default 0.4)
    - Anki-Connect URL (default `http://127.0.0.1:8765`)
    - Target deck (default `CFA::Practical Problems`, created automatically)
    - Use the **Test Anki** / **Test LLM** buttons to verify both connections.

@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o-mini',
+  temperature: 0.4,
   apiStyle: 'chat', // 'chat' | 'responses'
   ankiUrl: 'http://127.0.0.1:8765',
   deckName: 'CFA::Practical Problems'
