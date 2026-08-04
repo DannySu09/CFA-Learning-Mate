@@ -234,20 +234,46 @@
     return '';
   }
 
-  // Official per-option feedback: each option region carries a second
-  // .user_content div whose label span reads "Correct Answer Feedback:"
-  // (correct option) or "Incorrect Answer Feedback:" (each wrong option).
+  // Official per-option feedback: each option region carries a feedback
+  // block whose label reads "Correct Answer Feedback:" (correct option) or
+  // "Incorrect Answer Feedback:" (each wrong option). The CFAI UI has
+  // rendered that label in different elements over time (span/strong, with
+  // or without the colon, inside or outside .user_content), so match any
+  // short leaf element with label-like text instead of a fixed structure.
   // Unanswered questions have no feedback blocks at all. Returns sanitized
   // HTML (for the card) + plain text (for the LLM prompt), or empty strings.
-  function optionTip(region) {
+  function optionTip(region, input) {
     if (!region) return { tip: '', tipText: '' };
-    const isFeedbackLabel = s => /^(Correct|Incorrect) Answer Feedback:\s*$/i.test(s || '');
-    const el = [...region.querySelectorAll('.user_content')]
-      .find(node => [...node.querySelectorAll('span')].some(span => isFeedbackLabel(span.textContent)));
-    if (!el) return { tip: '', tipText: '' };
-    const clone = el.cloneNode(true);
-    const label = [...clone.querySelectorAll('span')].find(span => isFeedbackLabel(span.textContent));
-    label?.remove();
+    // Leaf elements only (no child elements), short text: the label itself,
+    // optionally followed by a colon and a brief suffix. The length cap
+    // keeps question prose — and feedback bodies sharing the label's
+    // element — from matching.
+    const isFeedbackLabel = s => /^(Correct|Incorrect) Answer Feedback:?[\s\S]{0,36}$/i.test(String(s).trim());
+    const labels = [...region.querySelectorAll('*')]
+      .filter(el => el.children.length === 0 && isFeedbackLabel(el.textContent))
+      .sort((a, b) => a.textContent.length - b.textContent.length);
+    if (!labels.length) return { tip: '', tipText: '' };
+    // When several options share one region (practice-mode grid), every
+    // feedback block matches — pair each option with the block that follows
+    // its radio in the DOM; fall back to the first match.
+    let label = labels[0];
+    if (input && labels.length > 1) {
+      const radios = [...region.querySelectorAll('input[type="radio"]')];
+      const own = labels.find(l => {
+        const before = radios.filter(r => r.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return before.length > 0 && before[before.length - 1] === input;
+      });
+      if (own) label = own;
+    }
+    // The feedback block is the label's .user_content (current markup) or
+    // the label's own wrapper when the platform drops that class.
+    const block = label.closest('.user_content') || label.parentElement;
+    if (!block) return { tip: '', tipText: '' };
+    const clone = block.cloneNode(true);
+    const toRemove = [...clone.querySelectorAll('*')]
+      .filter(el => el.children.length === 0 && isFeedbackLabel(el.textContent))
+      .sort((a, b) => a.textContent.length - b.textContent.length)[0];
+    toRemove?.remove();
     return { tip: sanitizeHtml(clone.innerHTML), tipText: richText(clone) };
   }
 
@@ -266,7 +292,7 @@
       }
       const m = text.match(/^([A-Za-z])\./);
       const letter = m ? m[1].toUpperCase() : String.fromCharCode(65 + i);
-      const tip = optionTip(region);
+      const tip = optionTip(region, input);
       return {
         letter,
         text,
@@ -296,6 +322,15 @@
     const options = rawOptions.map(({ _region, ...rest }) => rest);
     const stemHtml = sanitizeHtml(stemEl ? stemEl.innerHTML : '');
     const vignetteHtml = vignette ? sanitizeHtml(vignette.innerHTML) : '';
+    // Answered questions always carry official feedback on the page — if
+    // none was found, the CFAI markup changed in a way this script doesn't
+    // recognize. Say so instead of silently shipping a card without tips.
+    if (getStatus(options) !== 'unanswered' && !options.some(o => o.tip)) {
+      console.warn('[CFA2Anki] official feedback not found for an answered question', {
+        qid,
+        html: (qEl.outerHTML || '').slice(0, 800)
+      });
+    }
     return {
       qid,
       status: getStatus(options),
