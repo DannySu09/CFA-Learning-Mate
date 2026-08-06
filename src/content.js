@@ -80,6 +80,28 @@
   background: #fff; box-shadow: 0 2px 12px rgba(15, 23, 42, .08);
   text-align: left; /* the page's styles can't re-center the preview */
 }
+/* Disclosure row above the card back. The back is rendered as a side effect
+   (fetched from Anki / shown after saving), so it starts collapsed — click
+   to expand. The face lives in a closed shadow root, so collapsing hides
+   the whole host element instead of the shadow content. */
+.cfa2anki-back-toggle {
+  display: flex; align-items: center; gap: 6px;
+  margin: 12px 0 0; width: 100%; box-sizing: border-box;
+  font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #475569; background: #fff;
+  border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 8px 12px; cursor: pointer; text-align: left;
+  transition: background .15s;
+}
+.cfa2anki-back-toggle:hover { background: #f1f5f9; }
+.cfa2anki-back-toggle-chevron {
+  display: inline-block; font-size: 11px; line-height: 1;
+  transition: transform .15s;
+}
+.cfa2anki-back-toggle.expanded .cfa2anki-back-toggle-chevron { transform: rotate(90deg); }
+/* The preview's own display rule would otherwise override the hidden
+   attribute (author styles beat the UA's [hidden] { display:none }). */
+.cfa2anki-preview[hidden] { display: none; }
 .cfa2anki-toast {
   position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
   background: #111827; color: #fff; font: 500 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -123,8 +145,9 @@
   // Preview state per question: the LLM study note (so "Save to Anki" reuses
   // it instead of re-requesting) and the rendered card faces (back once
   // "AI Explain" ran, front once the card is saved). Kept so SPA re-renders
-  // can restore previews without another LLM/Anki round trip.
-  const previewCache = new Map(); // qid → { llm, front: {html,css}|null, back: {html,css}|null }
+  // can restore previews without another LLM/Anki round trip. backExpanded
+  // remembers whether the user opened the back disclosure (default: closed).
+  const previewCache = new Map(); // qid → { llm, front: {html,css}|null, back: {html,css}|null, backExpanded }
   // host element → its closed shadow root (the only reference that survives).
   const previewRoots = new WeakMap();
 
@@ -477,8 +500,10 @@
   // background from the note type's own templates (single source of truth)
   // and live in a closed shadow root — page styles can't restyle the card,
   // and the page's framework can't touch it. The front sits above the back,
-  // like flipping the card.
-  function renderPreview(qEl, role, html, css) {
+  // like flipping the card. The back starts collapsed behind a disclosure
+  // row unless `expanded` is true ("AI Explain" asks for it; restores keep
+  // the user's last choice).
+  function renderPreview(qEl, role, html, css, expanded = false) {
     const wrap = qEl.querySelector(`.${TAG}-wrap`);
     if (!wrap) return;
     const cls = `${TAG}-preview${role === 'front' ? '-front' : ''}`;
@@ -502,6 +527,45 @@
     }
     root.innerHTML = `<style>${css}</style>${html}`;
     renderPreviewMath(root);
+    if (role === 'back') {
+      ensureBackToggle(qEl, host);
+      setBackExpanded(qEl, expanded);
+    }
+  }
+
+  // The back preview is a side effect (fetched from Anki, or shown after
+  // saving), so it renders collapsed behind a small disclosure row; the row
+  // survives SPA re-renders and keeps working when the host is recreated,
+  // so the click handler re-queries the host instead of closing over it.
+  function ensureBackToggle(qEl, host) {
+    let toggle = qEl.querySelector(`.${TAG}-back-toggle`);
+    if (!toggle) {
+      toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = `${TAG}-back-toggle`;
+      toggle.innerHTML = `<span class="${TAG}-back-toggle-chevron">▸</span> Card back`;
+      if (qEl.tagName === 'SPAN') toggle.style.gridColumn = '1 / -1';
+      toggle.addEventListener('click', () => {
+        const preview = qEl.querySelector(`.${TAG}-preview`);
+        if (!preview) return;
+        const expanded = preview.hidden; // collapsed → expand
+        setBackExpanded(qEl, expanded);
+        const cache = previewCache.get(getQid(qEl));
+        if (cache) cache.backExpanded = expanded;
+      });
+      host.insertAdjacentElement('beforebegin', toggle);
+    }
+    return toggle;
+  }
+
+  function setBackExpanded(qEl, expanded) {
+    const host = qEl.querySelector(`.${TAG}-preview`);
+    const toggle = qEl.querySelector(`.${TAG}-back-toggle`);
+    if (host) host.hidden = !expanded;
+    if (toggle) {
+      toggle.classList.toggle('expanded', expanded);
+      toggle.setAttribute('aria-expanded', String(expanded));
+    }
   }
 
   function refreshButtons() {
@@ -528,8 +592,9 @@
         const intact = host && host.dataset.qid === qid && previewRoots.has(host);
         if (host && !intact) host.remove();
         if (!intact) {
-          const cached = previewCache.get(qid)?.[role];
-          if (cached) renderPreview(qEl, role, cached.html, cached.css);
+          const entry = previewCache.get(qid);
+          const cached = entry?.[role];
+          if (cached) renderPreview(qEl, role, cached.html, cached.css, entry.backExpanded === true);
         }
       }
     });
@@ -605,8 +670,15 @@
           const b = res.backs[qid];
           if (b?.cardBackHtml && b.cardCss) {
             const prev = previewCache.get(qid) || {};
-            previewCache.set(qid, { ...prev, back: { html: b.cardBackHtml, css: b.cardCss } });
-            renderPreview(qEl, 'back', b.cardBackHtml, b.cardCss);
+            // Saved questions' backs are a side effect — keep them collapsed
+            // unless the user already expanded one this session.
+            const expanded = prev.backExpanded === true;
+            previewCache.set(qid, {
+              ...prev,
+              back: { html: b.cardBackHtml, css: b.cardCss },
+              backExpanded: expanded
+            });
+            renderPreview(qEl, 'back', b.cardBackHtml, b.cardCss, expanded);
           }
         }
       }
@@ -648,17 +720,22 @@
         if (res.cardFrontHtml && res.cardCss) {
           const prev = previewCache.get(payload.qid) || {};
           const aiExplained = !!(prev.llm || llm);
+          // After "AI Explain" the back is content the user is already
+          // reading, so it stays as the user left it; a direct save shows
+          // the back collapsed (it's a side effect of saving).
+          const backExpanded = prev.backExpanded ?? aiExplained;
           previewCache.set(payload.qid, {
             llm: prev.llm || llm || null,
             front: aiExplained ? null : { html: res.cardFrontHtml, css: res.cardCss },
-            back: res.cardBackHtml ? { html: res.cardBackHtml, css: res.cardCss } : prev.back || null
+            back: res.cardBackHtml ? { html: res.cardBackHtml, css: res.cardCss } : prev.back || null,
+            backExpanded
           });
           if (aiExplained) {
             qEl.querySelector(`.${TAG}-preview-front`)?.remove();
           } else {
             renderPreview(qEl, 'front', res.cardFrontHtml, res.cardCss);
           }
-          if (res.cardBackHtml) renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss);
+          if (res.cardBackHtml) renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss, backExpanded);
         }
       } else {
         delete btn.dataset.busy;
@@ -691,13 +768,16 @@
       const res = await chrome.runtime.sendMessage({ type: 'EXPLAIN_QUESTION', payload });
       if (res?.ok && res.cardBackHtml && res.cardCss) {
         // The explanation replaces the front preview — the front would just
-        // repeat the question that is already on the page.
+        // repeat the question that is already on the page. The user asked
+        // for this content, so it renders expanded (unlike Anki-fetched
+        // backs, which start collapsed).
         previewCache.set(payload.qid, {
           llm: res.llm,
           front: null,
-          back: { html: res.cardBackHtml, css: res.cardCss }
+          back: { html: res.cardBackHtml, css: res.cardCss },
+          backExpanded: true
         });
-        renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss);
+        renderPreview(qEl, 'back', res.cardBackHtml, res.cardCss, true);
         qEl.querySelector(`.${TAG}-preview-front`)?.remove();
         showPopover(wrap, 'Explanation ready — click Save to Anki to add the card');
       } else {
