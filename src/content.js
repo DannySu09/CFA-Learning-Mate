@@ -171,10 +171,126 @@
     'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'blockquote', 'code', 'pre'
   ]);
 
+  // The LMS ships math as MathML: a rendered <math> element (MathJax 2.x
+  // output), and often ALSO its markup as escaped text beside the element —
+  // that text is what shows up in cards as "<math style=…>…</math>".
+  const MATHML_SOURCE_RE = /<\/?math[\s>]/i;
+
+  // MathML → LaTeX for the constructs CFAI math actually uses: fractions,
+  // text runs, symbol operators, sub/superscripts, square roots, simple
+  // matrices. Anki's MathJax is TeX-only (raw MathML would sit unrendered
+  // in the card) and the on-page preview has its own small TeX parser, so
+  // both render from the same \[ … \] dialect the LLM already writes.
+  // Anything unknown falls back to its text so no content is lost.
+  function mathmlToLatex(el) {
+    const sym = {
+      '−': '-', '–': '-', '—': '-', '×': '\\times', '·': '\\cdot', '⋅': '\\cdot',
+      '÷': '\\div', '±': '\\pm', '≤': '\\leq', '≥': '\\geq', '≠': '\\neq',
+      '≈': '\\approx', '∈': '\\in', '∉': '\\notin', '∞': '\\infty',
+      '→': '\\to', '←': '\\leftarrow', '↔': '\\leftrightarrow', '…': '\\ldots',
+      '%': '\\%', '$': '\\$', '&': '\\&', '#': '\\#', '_': '\\_', '{': '\\{', '}': '\\}'
+    };
+    const escText = s => String(s)
+      .replace(/\\/g, '\\backslash')
+      .replace(/\u00A0/g, '\\ ');
+    const atoms = node => [...node.childNodes].map(conv).join('');
+    // mi/mn/mo hold the actual math (digits, variables, operators).
+    const mathAtoms = node => [...node.childNodes].map(c => {
+      if (c.nodeType === Node.TEXT_NODE) return [...c.data].map(ch => sym[ch] ?? ch).join('');
+      return conv(c);
+    }).join('');
+    function conv(node) {
+      if (node.nodeType === Node.TEXT_NODE) return escText(node.data);
+      if (node.nodeType !== Node.ELEMENT_NODE) return '';
+      switch (node.tagName.toLowerCase()) {
+        case 'math': case 'mrow': case 'mstyle': case 'mphantom':
+          return atoms(node);
+        case 'mfrac': {
+          const [num, den] = [...node.children];
+          // Degenerate fractions (one or no children) fall back to content.
+          if (!num || !den) return num ? conv(num) : '';
+          return `\\frac{${conv(num)}}{${conv(den)}}`;
+        }
+        case 'mtext':
+          // text run: escape the chars that are active even inside \text
+          return `\\text{${atoms(node).replace(/([%$&#_{}])/g, '\\$1')}}`;
+        case 'mo': case 'mi': case 'mn':
+          return mathAtoms(node);
+        case 'msqrt':
+          return `\\sqrt{${atoms(node)}}`;
+        case 'mroot': {
+          const [base, idx] = [...node.children];
+          return base ? `\\sqrt[${idx ? conv(idx) : ''}]{${conv(base)}}` : '';
+        }
+        case 'msup': {
+          const [base, sup] = [...node.children];
+          return base ? `{${conv(base)}}^{${sup ? conv(sup) : ''}}` : '';
+        }
+        case 'msub': {
+          const [base, sub] = [...node.children];
+          return base ? `{${conv(base)}}_{${sub ? conv(sub) : ''}}` : '';
+        }
+        case 'msubsup': {
+          const [base, sub, sup] = [...node.children];
+          return base ? `{${conv(base)}}_{${sub ? conv(sub) : ''}}^{${sup ? conv(sup) : ''}}` : '';
+        }
+        case 'mspace':
+          return '\\ ';
+        case 'mtable': {
+          const rows = [...node.children].filter(c => c.tagName?.toLowerCase() === 'mtr')
+            .map(tr => [...tr.children].filter(c => c.tagName?.toLowerCase() === 'mtd')
+              .map(td => conv(td)).join(' & '))
+            .join(' \\\\ ');
+          return `\\begin{matrix}${rows}\\end{matrix}`;
+        }
+        case 'semantics':
+          // first child is the presentation MathML browsers render; the
+          // annotation (TeX source / content MathML) is never shown
+          return node.firstElementChild ? conv(node.firstElementChild) : '';
+        case 'annotation': case 'annotation-xml':
+          return '';
+        default:
+          return atoms(node);
+      }
+    }
+    return conv(el);
+  }
+
+  // LaTeX with its \[ … \] / \( … \) delimiters — the same notation the
+  // card templates and the LLM prompt use.
+  function mathLatexText(mathEl) {
+    const block = mathEl.getAttribute('display') === 'block';
+    return (block ? '\\[' : '\\(') + mathmlToLatex(mathEl) + (block ? '\\]' : '\\)');
+  }
+
   function sanitizeHtml(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Revive MathML source that leaked in as escaped text (the LMS keeps a
+    // rendered <math> element and its markup as text side by side). The
+    // revived elements flow through the <math> conversion below.
+    const texts = [];
+    {
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) texts.push(walker.currentNode);
+    }
+    for (const textNode of texts) {
+      if (!MATHML_SOURCE_RE.test(textNode.data)) continue;
+      const tmp = doc.createElement('div');
+      tmp.innerHTML = textNode.data; // the source parses back into MathML
+      if (tmp.firstChild) textNode.replaceWith(...tmp.childNodes);
+    }
     for (const node of doc.body.querySelectorAll('*')) {
       const tag = node.tagName.toLowerCase();
+      if (tag === 'math') {
+        // MathML → LaTeX formula span, same dialect as the LLM's math; Anki
+        // renders it via MathJax and the preview via its stand-in renderer.
+        const block = node.getAttribute('display') === 'block';
+        const span = doc.createElement('span');
+        span.className = block ? 'formula-display' : 'formula-inline';
+        span.textContent = mathLatexText(node);
+        node.replaceWith(span);
+        continue;
+      }
       if (!ALLOWED_TAGS.has(tag)) {
         node.replaceWith(...node.childNodes);
         continue;
@@ -182,7 +298,10 @@
       for (const attr of [...node.attributes]) {
         const name = attr.name.toLowerCase();
         const keep = tag === 'img' && (name === 'src' || name === 'alt');
-        if (!keep && (name.startsWith('on') || name.startsWith('aria-') ||
+        // formula-* classes mark our LaTeX spans — keep them for the preview
+        // renderer, strip every other class.
+        const keepClass = name === 'class' && /^formula-(display|inline)$/.test(attr.value);
+        if (!keep && !keepClass && (name.startsWith('on') || name.startsWith('aria-') ||
             ['style', 'class', 'id', 'tabindex', 'role'].includes(name))) {
           node.removeAttribute(attr.name);
         }
@@ -210,13 +329,21 @@
 
   // textContent does NOT include shadow-root content — the quiz engine may
   // render option text inside web components, so collect it recursively.
+  // Math renders as LaTeX (not flattened MathML), and MathML source that
+  // leaked in as text is dropped — it's a duplicate of the element.
   function deepText(node) {
     if (!node) return '';
-    let t = node.nodeType === Node.TEXT_NODE ? node.textContent : (node.textContent || '');
-    if (node.nodeType === Node.ELEMENT_NODE && node.shadowRoot) {
-      t += ' ' + deepText(node.shadowRoot);
+    if (node.nodeType === Node.TEXT_NODE) {
+      return MATHML_SOURCE_RE.test(node.textContent) ? '' : node.textContent;
     }
-    return t;
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.tagName.toLowerCase() === 'math') return mathLatexText(node);
+      let t = '';
+      for (const child of node.childNodes) t += deepText(child);
+      if (node.shadowRoot) t += ' ' + deepText(node.shadowRoot);
+      return t;
+    }
+    return '';
   }
 
   // Find the smallest ancestor that contains exactly this one option input —
@@ -472,6 +599,9 @@
       if (!name) {
         const ch = s[pos.i] || '';
         if (ch === ',' || ch === ';' || ch === '!' || ch === ' ') { pos.i++; return '&nbsp;'; }
+        // Escaped literals (mathmlToLatex emits them for Anki's MathJax).
+        if (ch === '$' || ch === '%' || ch === '&' || ch === '#' ||
+            ch === '_' || ch === '{' || ch === '}') { pos.i++; return esc(ch); }
         return '\\';
       }
       if (name === 'quad' || name === 'qquad') return '&nbsp;&nbsp;';
@@ -928,13 +1058,18 @@
 
   // Text with tables rendered as readable rows ("Total debt | 2,000 | 1,900")
   // — plain textContent glues table cells together without separators.
+  // Math elements become LaTeX; MathML source leaked as text is dropped.
   function richText(el) {
     if (!el) return '';
     let text = '';
     const walk = (node) => {
-      if (node.nodeType === Node.TEXT_NODE) { text += node.textContent; return; }
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (!MATHML_SOURCE_RE.test(node.textContent)) text += node.textContent;
+        return;
+      }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const tag = node.tagName.toLowerCase();
+      if (tag === 'math') { text += ' ' + mathLatexText(node) + ' '; return; }
       if (tag === 'tr') text += '\n';
       else if (tag === 'td' || tag === 'th') text += ' | ';
       else if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'br', 'table'].includes(tag)) text += '\n';
