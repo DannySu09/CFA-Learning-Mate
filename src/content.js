@@ -95,7 +95,7 @@
 }
 .cfa2anki-back-toggle:hover { background: #f1f5f9; }
 .cfa2anki-back-toggle-chevron {
-  display: inline-block; font-size: 11px; line-height: 1;
+  flex-shrink: 0; width: 16px; height: 16px;
   transition: transform .15s;
 }
 .cfa2anki-back-toggle.expanded .cfa2anki-back-toggle-chevron { transform: rotate(90deg); }
@@ -673,7 +673,9 @@
       toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = `${TAG}-back-toggle`;
-      toggle.innerHTML = `<span class="${TAG}-back-toggle-chevron">▸</span> Card back`;
+      // Chevron as an inline SVG (currentColor follows the button): crisp at
+      // any size, unlike a font glyph whose weight varies by platform font.
+      toggle.innerHTML = `<svg class="${TAG}-back-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 11 8l-5.5 4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Card back`;
       if (qEl.tagName === 'SPAN') toggle.style.gridColumn = '1 / -1';
       toggle.addEventListener('click', () => {
         const preview = qEl.querySelector(`.${TAG}-preview`);
@@ -887,6 +889,17 @@
   async function onExplain(btnAi, qEl) {
     if (!runtimeAvailable()) {
       toast(CONTEXT_LOST_MSG, true);
+      return;
+    }
+    // The card back IS the LLM explanation (generated here or saved to Anki),
+    // so when it is already cached there is nothing new to ask the LLM —
+    // just expand the existing back preview.
+    const qid = getQid(qEl);
+    const cached = qid && previewCache.get(qid);
+    if (cached?.back) {
+      cached.backExpanded = true;
+      renderPreview(qEl, 'back', cached.back.html, cached.back.css, true);
+      qEl.querySelector(`.${TAG}-preview-front`)?.remove();
       return;
     }
     const payload = extractQuestion(qEl);
