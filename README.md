@@ -79,6 +79,12 @@ The CFA Institute practice page — the source UI the extension operates on:
      `https://api.openai.com/v1`), API key, model, API style
      (`chat` = Chat Completions, `responses` = Responses API), and
      temperature (0–2, default 0.4)
+   - Optional max output tokens (default 1800) and a **disable reasoning**
+     switch that skips hidden thinking for reasoning models — GPT-5
+     (`reasoning_effort: minimal`), o-series (`low`), DeepSeek (`thinking`
+     disabled), Qwen (`enable_thinking: false`), OpenRouter-style endpoints
+     (`reasoning.enabled: false`). Endpoints that reject the params are
+     retried once without them and remembered for the session.
    - Anki-Connect URL (default `http://127.0.0.1:8765`)
    - Target deck (default `CFA::Practical Problems`, created automatically)
    - Use the **Test Anki** / **Test LLM** buttons to verify both connections.
@@ -92,6 +98,9 @@ The CFA Institute practice page — the source UI the extension operates on:
   (one failed, one unanswered, one correct). To test detection against it:
   `chrome://extensions` → extension details → enable
   **Allow access to file URLs**, then open the file in a tab.
+- LLM request duration and token usage are logged from the extension service
+  worker: `chrome://extensions` → extension details → **Inspect views** →
+  **Service Worker**.
 - If CFAI changes its markup, the selectors live in `src/content.js`
   (`extractOptions`, `.user_content`, `.fs-mask`, `svg[name="IconCheck"]`…).
 

@@ -23,6 +23,8 @@ const DEFAULT_SETTINGS = {
   apiKey: '',
   model: 'gpt-4o-mini',
   temperature: 0.4,
+  maxTokens: 1800,
+  disableThinking: true,
   apiStyle: 'chat', // 'chat' | 'responses'
   ankiUrl: 'http://127.0.0.1:8765',
   deckName: 'CFA::Practical Problems'

@@ -1,11 +1,25 @@
 /* Options page logic. */
 
-const FIELDS = ['apiBaseUrl', 'apiKey', 'model', 'temperature', 'apiStyle', 'ankiUrl', 'deckName'];
+const FIELDS = [
+  'apiBaseUrl',
+  'apiKey',
+  'model',
+  'temperature',
+  'maxTokens',
+  'disableThinking',
+  'apiStyle',
+  'ankiUrl',
+  'deckName'
+];
+const BOOLEAN_FIELDS = ['disableThinking'];
+const NUMERIC_FIELDS = ['temperature', 'maxTokens'];
 const DEFAULTS = {
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o-mini',
   temperature: 0.4,
+  maxTokens: 1800,
+  disableThinking: true,
   apiStyle: 'chat',
   ankiUrl: 'http://127.0.0.1:8765',
   deckName: 'CFA::Practical Problems'
@@ -14,15 +28,25 @@ const DEFAULTS = {
 async function load() {
   const stored = await chrome.storage.local.get(FIELDS);
   for (const f of FIELDS) {
-    document.getElementById(f).value = stored[f] ?? DEFAULTS[f];
+    const el = document.getElementById(f);
+    if (BOOLEAN_FIELDS.includes(f)) {
+      el.checked = stored[f] ?? DEFAULTS[f];
+    } else {
+      el.value = stored[f] ?? DEFAULTS[f];
+    }
   }
 }
 
 function readForm() {
   const out = {};
   for (const f of FIELDS) {
-    const v = document.getElementById(f).value.trim();
-    out[f] = f === 'temperature' ? (v === '' ? '' : Number(v)) : v;
+    const el = document.getElementById(f);
+    if (BOOLEAN_FIELDS.includes(f)) {
+      out[f] = el.checked;
+      continue;
+    }
+    const v = el.value.trim();
+    out[f] = NUMERIC_FIELDS.includes(f) ? (v === '' ? '' : Number(v)) : v;
   }
   return out;
 }
@@ -59,6 +83,10 @@ document.getElementById('save').addEventListener('click', async () => {
   }
   if (s.temperature === '' || Number.isNaN(s.temperature) || s.temperature < 0 || s.temperature > 2) {
     setStatus('Temperature must be a number between 0 and 2.', false);
+    return;
+  }
+  if (s.maxTokens !== '' && (Number.isNaN(s.maxTokens) || !Number.isInteger(s.maxTokens) || s.maxTokens < 1)) {
+    setStatus('Max output tokens must be a positive whole number, or leave blank for no cap.', false);
     return;
   }
   await chrome.storage.local.set(s);

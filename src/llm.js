@@ -5,6 +5,70 @@
 
 const LLM_TIMEOUT_MS = 120_000;
 
+// Endpoints (style|origin|model) that rejected thinking-control params with
+// 400/422. Remembered for the session so the plain-body retry happens at
+// most once — later calls skip the params instead of failing again.
+const fastModeUnsupported = new Set();
+
+function isDeepSeekRequest({ model, apiBaseUrl }) {
+  return /deepseek/i.test(String(model ?? '')) || /deepseek\.com/i.test(String(apiBaseUrl ?? ''));
+}
+
+// There is no cross-provider standard for turning reasoning off: OpenAI uses
+// reasoning_effort (chat) / reasoning.effort (responses), DeepSeek uses
+// thinking.type, Qwen uses enable_thinking, and OpenRouter-style gateways
+// normalize reasoning.enabled. Pick the params the model name implies; {}
+// when nothing safe matches, so non-reasoning models stay untouched.
+// Unsupported guesses are caught by the 400/422 fallback in llmChat.
+function fastModeParams({ model, apiBaseUrl, apiStyle }) {
+  const m = String(model ?? '');
+  const responses = apiStyle === 'responses';
+  if (isDeepSeekRequest({ model, apiBaseUrl })) {
+    return responses ? { reasoning: { effort: 'none' } } : { thinking: { type: 'disabled' } };
+  }
+  if (/qwen/i.test(m)) {
+    return responses ? {} : { enable_thinking: false };
+  }
+  if (m.includes('/')) { // OpenRouter-style "vendor/model" names
+    return { reasoning: { enabled: false, exclude: true } };
+  }
+  if (/gpt-5/i.test(m)) {
+    return responses ? { reasoning: { effort: 'minimal' } } : { reasoning_effort: 'minimal' };
+  }
+  if (/\bo[134](-mini|-pro)?\b/i.test(m)) {
+    return responses ? { reasoning: { effort: 'low' } } : { reasoning_effort: 'low' };
+  }
+  return {};
+}
+
+function normalizeUsage(data, apiStyle) {
+  const usage = data?.usage;
+  if (!usage || typeof usage !== 'object') return null;
+  return apiStyle === 'responses'
+    ? {
+        inputTokens: usage.input_tokens ?? null,
+        outputTokens: usage.output_tokens ?? null,
+        totalTokens: usage.total_tokens ?? null
+      }
+    : {
+        promptTokens: usage.prompt_tokens ?? null,
+        completionTokens: usage.completion_tokens ?? null,
+        totalTokens: usage.total_tokens ?? null
+      };
+}
+
+function getFinishReason(data, apiStyle) {
+  if (apiStyle === 'responses') {
+    const output = data?.output;
+    if (Array.isArray(output)) {
+      const last = output[output.length - 1];
+      if (last?.finish_reason) return last.finish_reason;
+    }
+    return data?.finish_reason ?? null;
+  }
+  return data?.choices?.[0]?.finish_reason ?? null;
+}
+
 function buildHeaders(apiKey) {
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
@@ -14,7 +78,18 @@ function buildHeaders(apiKey) {
 /** Low-level chat call; returns the raw text reply. Pass json: true when
  * the reply must be a JSON object (pins response_format, which is faster
  * and more reliable than hoping the model formats it correctly). */
-export async function llmChat({ apiBaseUrl, apiKey, model, temperature, apiStyle, system, user, json = false }) {
+export async function llmChat({
+  apiBaseUrl,
+  apiKey,
+  model,
+  temperature,
+  apiStyle,
+  system,
+  user,
+  json = false,
+  disableThinking = false,
+  maxTokens
+}) {
   const url = apiStyle === 'responses'
     ? `${apiBaseUrl}/responses`
     : `${apiBaseUrl}/chat/completions`;
@@ -26,11 +101,20 @@ export async function llmChat({ apiBaseUrl, apiKey, model, temperature, apiStyle
     : Number(temperature);
   const temp = Number.isFinite(t) ? { temperature: t } : {};
 
-  const body = apiStyle === 'responses'
-    ? JSON.stringify({ model, ...temp, instructions: system, input: user })
-    : JSON.stringify({
+  const maxOutput = Number(maxTokens);
+  const outputLimit = Number.isFinite(maxOutput) && maxOutput > 0
+    ? (apiStyle === 'responses' ? { max_output_tokens: maxOutput } : { max_tokens: maxOutput })
+    : {};
+  const fastKey = `${apiStyle}|${apiBaseUrl}|${model}`;
+  const fast = disableThinking === true ? fastModeParams({ model, apiBaseUrl, apiStyle }) : {};
+  const useFast = Object.keys(fast).length > 0 && !fastModeUnsupported.has(fastKey);
+
+  const baseBody = apiStyle === 'responses'
+    ? { model, ...temp, ...outputLimit, instructions: system, input: user }
+    : {
         model,
         ...temp,
+        ...outputLimit,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
@@ -38,29 +122,79 @@ export async function llmChat({ apiBaseUrl, apiKey, model, temperature, apiStyle
         // JSON mode requires the word "json" somewhere in the messages —
         // the study-note prompt already contains it.
         ...(json ? { response_format: { type: 'json_object' } } : {})
-      });
+      };
+  let fastApplied = useFast;
 
-  const res = await fetch(url, {
+  const startedAt = performance.now();
+  const doFetch = (obj) => fetch(url, {
     method: 'POST',
     headers: buildHeaders(apiKey),
-    body,
+    body: JSON.stringify(obj),
     signal: AbortSignal.timeout(LLM_TIMEOUT_MS)
   });
+
+  let res;
+  let errText = '';
+  try {
+    res = await doFetch(useFast ? { ...baseBody, ...fast } : baseBody);
+    // Strict endpoints reject unknown params (400) or fail validation (422),
+    // naming the offending key in the body. One plain retry keeps such
+    // endpoints working, and fastModeUnsupported prevents the failed attempt
+    // from repeating on every call. Other 400s (bad model, unsupported
+    // response_format…) are left to fail fast below, without poisoning the
+    // cache or stripping params that were never the problem.
+    if (!res.ok && useFast && (res.status === 400 || res.status === 422)) {
+      try { errText = (await res.text()).slice(0, 400); } catch { /* ignore */ }
+      if (!errText || Object.keys(fast).some(k => errText.includes(k))) {
+        fastApplied = false;
+        fastModeUnsupported.add(fastKey);
+        errText = '';
+        console.warn('[LLM] thinking-disable params rejected — retrying without them', {
+          model, status: res.status, params: fast
+        });
+        res = await doFetch(baseBody);
+      }
+    }
+  } catch (err) {
+    const durationMs = Math.round(performance.now() - startedAt);
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      throw new Error(`LLM request timed out after ${durationMs}ms`);
+    }
+    throw err;
+  }
   if (!res.ok) {
-    let text = '';
-    try { text = (await res.text()).slice(0, 400); } catch { /* ignore */ }
-    throw new Error(`LLM request failed (${res.status}): ${text}`);
+    let text = errText;
+    if (!text) {
+      try { text = (await res.text()).slice(0, 400); } catch { /* ignore */ }
+    }
+    throw new Error(`LLM request failed (${res.status}) after ${Math.round(performance.now() - startedAt)}ms: ${text}`);
   }
   const data = await res.json();
 
+  let text = '';
   if (apiStyle === 'responses') {
-    if (typeof data.output_text === 'string') return data.output_text;
-    const parts = (data.output || [])
-      .filter(o => o.type === 'message')
-      .flatMap(o => (o.content || []).filter(c => c.type === 'text').map(c => c.text));
-    return parts.join('');
+    if (typeof data.output_text === 'string') text = data.output_text;
+    else {
+      const parts = (data.output || [])
+        .filter(o => o.type === 'message')
+        .flatMap(o => (o.content || []).filter(c => c.type === 'text').map(c => c.text));
+      text = parts.join('');
+    }
+  } else {
+    text = data.choices?.[0]?.message?.content ?? '';
   }
-  return data.choices?.[0]?.message?.content ?? '';
+
+  const durationMs = Math.round(performance.now() - startedAt);
+  console.info('[LLM] request complete', {
+    model,
+    apiStyle,
+    durationMs,
+    usage: normalizeUsage(data, apiStyle),
+    finishReason: getFinishReason(data, apiStyle),
+    chars: text.length,
+    thinkingOff: fastApplied ? Object.keys(fast).join(',') : false
+  });
+  return text;
 }
 
 const SYSTEM_PROMPT = `You are a CFA (Chartered Financial Analyst) exam tutor. You explain CFA exam
@@ -169,7 +303,8 @@ export async function generateExplanation(payload, settings) {
   });
   const json = parseLlmJson(raw);
   if (!json) {
-    throw new Error('LLM response was not valid JSON — retry or switch the API style in options.');
+    const capHint = settings.maxTokens ? ` If maxTokens is too low, raise it in options.` : '';
+    throw new Error(`LLM response was not valid JSON.${capHint} Retry or switch the API style in options.`);
   }
   return {
     answerLetter: String(json.answer_letter ?? '').trim(),

@@ -23,6 +23,10 @@
     border-radius: 8px;
     background: #fff;
   }
+  input[type="checkbox"] {
+    width: auto;
+    padding: 0;
+  }
   input:focus, select:focus { outline: 2px solid #2563eb55; border-color: #2563eb; }
   .row { display: flex; gap: 10px; }
   .row > div { flex: 1; }
@@ -71,9 +75,23 @@
   <label for="model">Model</label>
   <input id="model" type="text" spellcheck="false" placeholder="gpt-4o-mini">
 
-  <label for="temperature">Temperature</label>
-  <input id="temperature" type="number" min="0" max="2" step="0.1" placeholder="0.4" style="max-width:150px">
-  <div class="hint">0–2 (default 0.4). Lower is more deterministic; higher is more creative.</div>
+  <div class="row" style="align-items:flex-end">
+    <div style="max-width:150px">
+      <label for="temperature">Temperature</label>
+      <input id="temperature" type="number" min="0" max="2" step="0.1" placeholder="0.4">
+      <div class="hint">0–2 (default 0.4). Lower is more deterministic; higher is more creative.</div>
+    </div>
+    <div style="max-width:170px">
+      <label for="maxTokens">Max output tokens</label>
+      <input id="maxTokens" type="number" min="1" step="100" placeholder="1800">
+      <div class="hint">Default 1800. Blank = no cap.</div>
+    </div>
+    <div style="max-width:230px">
+      <label for="disableThinking">Disable reasoning (thinking)</label>
+      <input id="disableThinking" type="checkbox" checked>
+      <div class="hint">Skips hidden reasoning for GPT-5, o-series, DeepSeek, Qwen and OpenRouter-style models. Ignored where the endpoint doesn't support it.</div>
+    </div>
+  </div>
 
   <h2>Anki</h2>
   <label for="ankiUrl">Anki-Connect URL</label>
