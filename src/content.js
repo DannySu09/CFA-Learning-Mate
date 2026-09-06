@@ -120,7 +120,9 @@
 }
 @keyframes cfa2anki-spin { to { transform: rotate(360deg); } }
 .cfa2anki-popover {
-  position: fixed; z-index: 2147483647;
+  /* Absolutely positioned in page coordinates (not fixed): it must scroll
+     with the content so it stays attached under the button that spawned it. */
+  position: absolute; z-index: 2147483647;
   background: #111827; color: #fff;
   font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   padding: 8px 12px; border-radius: 8px;
@@ -741,9 +743,12 @@
       document.body.appendChild(el);
     }
     el.textContent = msg;
+    // Viewport rect + scroll offset → page coordinates for absolute
+    // positioning, so the bubble tracks the button while the page scrolls.
     const r = anchor.getBoundingClientRect();
-    el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 12))}px`;
-    el.style.top = `${r.bottom + 8}px`;
+    const left = Math.max(8, Math.min(r.left, document.documentElement.clientWidth - el.offsetWidth - 12));
+    el.style.left = `${left + window.scrollX}px`;
+    el.style.top = `${r.bottom + 8 + window.scrollY}px`;
     el.classList.add('show');
     clearTimeout(el._t);
     el._t = setTimeout(() => el.classList.remove('show'), 4000);
