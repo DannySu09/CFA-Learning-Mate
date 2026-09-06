@@ -59,6 +59,21 @@
 }
 .cfa2anki-btn-ai:hover:not(:disabled) { background: #f1f5f9; }
 .cfa2anki-btn-ai:disabled { opacity: .55; }
+/* Shortcut hints: a full-width line under the buttons, deliberately quiet. */
+.cfa2anki-kbd-tip {
+  flex-basis: 100%;
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: -2px;
+  font: 500 10px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #94a3b8; white-space: nowrap; cursor: default;
+}
+.cfa2anki-kbd-tip kbd {
+  font: 600 9px/1 inherit; font-family: inherit;
+  color: #94a3b8; background: #fafbfc;
+  border: 1px solid #f1f5f9; border-bottom-width: 2px;
+  border-radius: 4px; padding: 1px 4px;
+}
+.cfa2anki-kbd-tip .sep { margin: 0 2px; }
 .cfa2anki-status {
   display: inline-block;
   font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -68,9 +83,8 @@
 /* The pill's own display rule would otherwise override the hidden attribute
    (author styles beat the UA's [hidden] { display:none }) — restore it. */
 .cfa2anki-status[hidden] { display: none; }
-/* Button row: status pill + save button on the left, AI Explain pushed to
-   the right edge. */
-.cfa2anki-wrap { display: flex; align-items: center; gap: 8px; }
+/* Shortcut hints, wrapped onto their own quiet line under the button row. */
+.cfa2anki-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* Card-face previews: the rendered Anki card, framed like a sheet of paper.
    Their content lives in a closed shadow root, so page styles can't restyle
    them (and the page can't see them). */
@@ -521,7 +535,12 @@
     btnAi.className = `${TAG}-btn-ai`;
     btnAi.textContent = BUTTON_AI;
     btnAi.addEventListener('click', () => onExplain(btnAi, qEl));
-    wrap.append(status, btn, btnAi);
+    const kbdTip = document.createElement('span');
+    kbdTip.className = `${TAG}-kbd-tip`;
+    kbdTip.title = 'Shortcuts: Shift + → to skip this question, Shift + ← to go back';
+    kbdTip.innerHTML =
+      '<kbd>Shift</kbd><kbd>→</kbd> Skip <span class="sep">·</span> <kbd>Shift</kbd><kbd>←</kbd> Previous';
+    wrap.append(status, btn, btnAi, kbdTip);
     qEl.appendChild(wrap);
   }
 
@@ -954,6 +973,53 @@
     el._t = setTimeout(() => el.classList.remove('show'), 4500);
   }
 
+  /* ---------------- Keymap: Shift+→ Skip, Shift+← Previous ---------------- */
+
+  // Official footer controls ("Skip question", "Previous question"), matched
+  // by label text (the site's class names are minified/unstable) and searched
+  // deep, because the controls can live inside a web component's shadow root.
+  // Not cached — the SPA rebuilds the footer on every question swap.
+  const SKIP_RE = /\bskip\s+questions?\b/i;
+  const PREV_RE = /\bprev(ious)?(\s+question)?\b/i;
+  const isVisible = el =>
+    typeof el.checkVisibility === 'function'
+      ? el.checkVisibility()
+      : el.getClientRects().length > 0;
+
+  function findUiButton(re) {
+    const matches = [];
+    const visit = node => {
+      for (const el of node.querySelectorAll('button, [role="button"]')) {
+        if (re.test(cleanText(el.textContent))) matches.push(el);
+      }
+      for (const el of node.querySelectorAll('*')) {
+        if (el.shadowRoot) visit(el.shadowRoot);
+      }
+    };
+    visit(document);
+    return matches
+      .filter(isVisible)
+      // Prefer the real <button> over a role=button wrapper that contains
+      // it, then the shortest label (the control itself, not its container).
+      .sort((a, b) => (a.tagName === 'BUTTON' ? 0 : 1) - (b.tagName === 'BUTTON' ? 0 : 1) ||
+                      a.textContent.length - b.textContent.length)[0] || null;
+  }
+
+  function onKeydown(e) {
+    if (e.repeat || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    // Text fields keep Shift+arrows for selection (caret moves, select
+    // opening). Radios/checkboxes are deliberately NOT excluded: the browser
+    // ignores Shift in radio arrow-navigation, so the shortcut can take over
+    // when an option is still focused after answering.
+    if (e.target?.closest?.('textarea, select, [contenteditable], ' +
+        'input:not([type="radio"]):not([type="checkbox"])')) return;
+    const btn = findUiButton(e.key === 'ArrowRight' ? SKIP_RE : PREV_RE);
+    if (!btn) return;
+    e.preventDefault();
+    btn.click();
+  }
+
   /* ---------------- SPA watching (incl. shadow DOM) ---------------- */
 
   const styledRoots = new WeakSet();
@@ -1193,6 +1259,7 @@
     ensureStyle(document);
     ensureObserved(document);
     observeShadowRoots(document);
+    document.addEventListener('keydown', onKeydown);
     scan();
     scheduleStatusRefresh();
     // Safety net: catches swaps that slip past the observers (e.g. stylesheet-

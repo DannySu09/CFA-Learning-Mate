@@ -79,7 +79,7 @@ The CFA Institute practice page — the source UI the extension operates on:
      `https://api.openai.com/v1`), API key, model, API style
      (`chat` = Chat Completions, `responses` = Responses API), and
      temperature (0–2, default 0.4)
-   - Optional max output tokens (default 1800) and a **disable reasoning**
+   - Optional max output tokens (default 1200) and a **disable reasoning**
      switch that skips hidden thinking for reasoning models — GPT-5
      (`reasoning_effort: minimal`), o-series (`low`), DeepSeek (`thinking`
      disabled), Qwen (`enable_thinking: false`), OpenRouter-style endpoints

@@ -210,7 +210,7 @@ note in EXACTLY this JSON shape:
   "paragraphs": ["Short paragraph (max 3 sentences), teaching the concept with a simple story or analogy.", "Optional second short paragraph."],
   "wrong_reasons": [{"letter": "A", "reason": "One sentence: why this option is tempting but wrong."}],
   "memory_hook": "One memorable sentence that makes the answer stick.",
-  "terms": [{"term": "Common-size analysis", "definition": "Detailed explanation of what the term means.", "story": "Story-telling teaching aid to remember it."}]
+  "terms": [{"term": "Common-size analysis", "definition": "A 1-2 sentence story-flavored explanation of what the term means."}]
 }
 
 Rules:
@@ -223,13 +223,12 @@ Rules:
 - wrong_reasons: one entry per wrong option, one sentence each, plain text.
   Empty array if there are no wrong options.
 - memory_hook: one short memorable sentence, plain text.
-- terms: every CFA term/abbreviation in the question or options. Each entry
-  has TWO parts, both plain text (no markdown, no HTML):
-  - definition: a clear, detailed, accurate explanation of what the term
-    means (2-4 sentences) — the substance a candidate must know.
-  - story: a separate story-telling style teaching aid (an analogy, an
-    "imagine that..." hook, or a tiny story, 1-3 sentences) that makes the
-    term easy to understand and recall. Never a dry dictionary line.
+- terms: the up to 3 MOST important CFA terms or abbreviations for
+  understanding this question — not every term present. Each entry is plain
+  text (no markdown, no HTML):
+  - definition: a clear, accurate explanation of what the term means in
+    1-2 sentences, written with a story-telling flavor (an analogy or an
+    "imagine that..." hook) — never a dry dictionary line.
   Empty array if there are none.
 - Math: whenever a concept involves a calculation, give the actual formula
   in LaTeX — don't describe the calculation in words (e.g. write
