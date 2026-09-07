@@ -537,9 +537,9 @@
     btnAi.addEventListener('click', () => onExplain(btnAi, qEl));
     const kbdTip = document.createElement('span');
     kbdTip.className = `${TAG}-kbd-tip`;
-    kbdTip.title = 'Shortcuts: Shift + → to skip this question, Shift + ← to go back';
+    kbdTip.title = 'Shortcuts: Shift + → to skip (or go to the next) question, Shift + ← to go back';
     kbdTip.innerHTML =
-      '<kbd>Shift</kbd><kbd>→</kbd> Skip <span class="sep">·</span> <kbd>Shift</kbd><kbd>←</kbd> Previous';
+      '<kbd>Shift</kbd><kbd>→</kbd> Skip/Next <span class="sep">·</span> <kbd>Shift</kbd><kbd>←</kbd> Previous';
     wrap.append(status, btn, btnAi, kbdTip);
     qEl.appendChild(wrap);
   }
@@ -724,9 +724,12 @@
   function refreshButtons() {
     collectQuestions().forEach(qEl => {
       const btn = qEl.querySelector(`.${TAG}-btn`);
-      // Skip buttons currently mid-add — a scan must not clobber the
-      // spinner/adding state while the request is in flight.
-      if (!btn || btn.dataset.busy === '1') return;
+      const btnAi = qEl.querySelector(`.${TAG}-btn-ai`);
+      // Skip buttons mid-add — a scan must not clobber the spinner/adding
+      // state while the request is in flight. Same while AI Explain runs:
+      // both buttons are locked then, and re-enabling the save button here
+      // would let a click start a duplicate LLM request.
+      if (!btn || btn.dataset.busy === '1' || btnAi?.dataset.busy === '1') return;
       const qid = getQid(qEl);
       const saved = ankiState.has(qid);
       const statusEl = qEl.querySelector(`.${TAG}-status`);
@@ -845,6 +848,20 @@
     }
   }
 
+  // Save and AI Explain both trigger LLM work, so while either request is in
+  // flight BOTH buttons are locked — the partner just gets disabled (no
+  // spinner, normal look), preventing a duplicate LLM request. The loading
+  // button manages its own label/spinner/disabled state; this only touches
+  // the other one. Locking must survive scans: refreshButtons() skips the
+  // save button while either side is busy.
+  function setActionButtons(qEl, activeBtn, locked) {
+    for (const sel of [`.${TAG}-btn`, `.${TAG}-btn-ai`]) {
+      const b = qEl.querySelector(sel);
+      if (!b || b === activeBtn) continue;
+      b.disabled = locked;
+    }
+  }
+
   async function onClick(btn, qEl) {
     if (!runtimeAvailable()) {
       toast(CONTEXT_LOST_MSG, true);
@@ -861,11 +878,13 @@
     btn.disabled = true;
     btn.classList.remove('done');
     btn.innerHTML = `<span class="${TAG}-spinner"></span>Adding to Anki…`;
+    setActionButtons(qEl, btn, true);
     try {
       const res = await chrome.runtime.sendMessage({ type: 'SAVE_QUESTION', payload });
       if (res?.ok && res.verified) {
         ankiState.set(payload.qid, res.noteId);
         delete btn.dataset.busy;
+        setActionButtons(qEl, btn, false);
         refreshButtons();
         showPopover(wrap, res.replaced ? 'Card re-added to Anki ✓' : 'Card added to Anki ✓');
         // The card is saved: show its faces under the button. The back is
@@ -895,12 +914,14 @@
         }
       } else {
         delete btn.dataset.busy;
+        setActionButtons(qEl, btn, false);
         refreshButtons();
         scheduleStatusRefresh();
         toast(`Could not add card: ${res?.error || 'Anki did not confirm the card — try again'}`, true);
       }
     } catch (err) {
       delete btn.dataset.busy;
+      setActionButtons(qEl, btn, false);
       refreshButtons();
       scheduleStatusRefresh();
       toast(`Could not add card: ${err.message}`, true);
@@ -931,6 +952,7 @@
     btnAi.dataset.busy = '1';
     btnAi.disabled = true;
     btnAi.innerHTML = `<span class="${TAG}-spinner"></span>Explaining…`;
+    setActionButtons(qEl, btnAi, true);
     try {
       const res = await chrome.runtime.sendMessage({ type: 'EXPLAIN_QUESTION', payload });
       if (res?.ok && res.cardBackHtml && res.cardCss) {
@@ -956,6 +978,7 @@
       delete btnAi.dataset.busy;
       btnAi.disabled = false;
       btnAi.textContent = BUTTON_AI;
+      setActionButtons(qEl, btnAi, false);
     }
   }
 
@@ -981,6 +1004,9 @@
   // Not cached — the SPA rebuilds the footer on every question swap.
   const SKIP_RE = /\bskip\s+questions?\b/i;
   const PREV_RE = /\bprev(ious)?(\s+question)?\b/i;
+  // Some screens (e.g. results review) have no Skip control — "Next" is the
+  // forward fallback for Shift+→ there.
+  const NEXT_RE = /\bnext\b/i;
   const isVisible = el =>
     typeof el.checkVisibility === 'function'
       ? el.checkVisibility()
@@ -1014,7 +1040,8 @@
     // when an option is still focused after answering.
     if (e.target?.closest?.('textarea, select, [contenteditable], ' +
         'input:not([type="radio"]):not([type="checkbox"])')) return;
-    const btn = findUiButton(e.key === 'ArrowRight' ? SKIP_RE : PREV_RE);
+    let btn = findUiButton(e.key === 'ArrowRight' ? SKIP_RE : PREV_RE);
+    if (!btn && e.key === 'ArrowRight') btn = findUiButton(NEXT_RE);
     if (!btn) return;
     e.preventDefault();
     btn.click();
